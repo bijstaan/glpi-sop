@@ -105,6 +105,9 @@ final class ClauseForm
             ? $operator
             : (string) array_key_first($operators);
 
+        // A DOM id, not a token: GLPI's own Html:: helpers seed widget ids this
+        // way so two of the same dropdown on one page do not collide. Predicting
+        // it buys an attacker an element id already readable in the markup.
         $rand = mt_rand();
 
         echo "<div class='row g-2 align-items-end'>";

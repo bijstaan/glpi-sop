@@ -335,8 +335,11 @@ final class StepType
                     return ['error' => __('Pick a user.', 'glpisop')] + $blank;
                 }
                 $user = new User();
-                if (!$user->getFromDB($users_id)) {
-                    return ['error' => __('That user does not exist.', 'glpisop')] + $blank;
+                // Re-read and re-check, exactly as the asset branch does: the
+                // picker is client-side, and format() prints this name into the
+                // run log, the completion followup and the PDF.
+                if (!$user->getFromDB($users_id) || !$user->canViewItem()) {
+                    return ['error' => __('That user does not exist, or you cannot see them.', 'glpisop')] + $blank;
                 }
                 return ['value' => null, 'value_itemtype' => User::class, 'value_items_id' => $users_id,
                     'documents_id' => 0,
@@ -363,8 +366,13 @@ final class StepType
             case self::DOCUMENT:
                 $documents_id = (int) ($post['documents_id'] ?? 0);
                 $document     = new Document();
-                if ($documents_id <= 0 || !$document->getFromDB($documents_id)) {
-                    return ['error' => __('Attach a file for this step.', 'glpisop')] + $blank;
+                // Existence is not the question — visibility is. Without the
+                // second half, answering a step is an oracle: the id is stored,
+                // and format() hands the document's *name* back through the run
+                // log, the mobile payload, the completion followup and the PDF,
+                // for a document filed in an entity this session cannot reach.
+                if ($documents_id <= 0 || !$document->getFromDB($documents_id) || !$document->canViewItem()) {
+                    return ['error' => __('That document does not exist, or you cannot see it.', 'glpisop')] + $blank;
                 }
                 return ['value' => null, 'value_itemtype' => null, 'value_items_id' => 0,
                     'documents_id' => $documents_id,

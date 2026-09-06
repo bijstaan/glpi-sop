@@ -502,8 +502,8 @@ final class Author
         $summary = trim((string) ($data['summary'] ?? ''));
         $gaps    = trim((string) ($data['gaps'] ?? ''));
 
-        $sop     = new Sop();
-        $sops_id = (int) $sop->add([
+        $sop   = new Sop();
+        $input = [
             'name'             => mb_substr($name, 0, 250),
             'content'          => self::provenance($summary, $gaps, $tickets_id, $category, $completion),
             'itemtypes'        => ['Ticket'],
@@ -516,7 +516,23 @@ final class Author
             'enforce_on_solve' => 0,
             'entities_id'      => $entities_id,
             'is_recursive'     => 1,
-        ]);
+        ];
+
+        // The entity came in on the request and `add()` authorises nothing, so
+        // this is the only thing standing between a caller and a procedure
+        // planted in somebody else's tenant. The UPDATE right that opened the
+        // page is profile-wide and says nothing about *which* entity — and a
+        // session can be active in an entity its profile may not create in.
+        // Same guard, for the same reason, as AiTools::runCreate().
+        if (!$sop->can(-1, CREATE, $input)) {
+            return [
+                'sops_id' => 0,
+                'error'   => __('You cannot create a procedure in that entity.', 'glpisop'),
+                'notes'   => $notes,
+            ];
+        }
+
+        $sops_id = (int) $sop->add($input);
 
         if ($sops_id <= 0) {
             return [

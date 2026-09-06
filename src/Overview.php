@@ -112,15 +112,33 @@ final class Overview
         $answered = [];
         $skipped  = [];
 
+        // Joined through the run for its `entities_id`: answers and steps carry
+        // no entity of their own, so aggregating the answers table on its own
+        // counts every tenant's and then names their procedures and step
+        // wordings in the table below. bySop() above is restricted; this has to
+        // be too, and the run is the only row in the chain that knows where it
+        // happened.
         foreach (
             $DB->request([
-                'SELECT'  => [
-                    'plugin_glpisop_steps_id',
-                    'state',
-                    'COUNT' => 'id AS answers',
+                'SELECT'     => [
+                    Answer::getTable() . '.plugin_glpisop_steps_id AS plugin_glpisop_steps_id',
+                    Answer::getTable() . '.state AS state',
+                    'COUNT' => Answer::getTable() . '.id AS answers',
                 ],
-                'FROM'    => Answer::getTable(),
-                'GROUPBY' => ['plugin_glpisop_steps_id', 'state'],
+                'FROM'       => Answer::getTable(),
+                'INNER JOIN' => [
+                    Run::getTable() => [
+                        'ON' => [
+                            Answer::getTable() => 'plugin_glpisop_runs_id',
+                            Run::getTable()    => 'id',
+                        ],
+                    ],
+                ],
+                'WHERE'      => getEntitiesRestrictCriteria(Run::getTable(), 'entities_id', '', false),
+                'GROUPBY'    => [
+                    Answer::getTable() . '.plugin_glpisop_steps_id',
+                    Answer::getTable() . '.state',
+                ],
             ]) as $group
         ) {
             $steps_id = (int) $group['plugin_glpisop_steps_id'];
@@ -144,7 +162,10 @@ final class Overview
             }
 
             $sop = new Sop();
-            if (!$sop->getFromDB((int) $step->fields['plugin_glpisop_sops_id'])) {
+            if (
+                !$sop->getFromDB((int) $step->fields['plugin_glpisop_sops_id'])
+                || !$sop->canViewItem()
+            ) {
                 continue;
             }
 

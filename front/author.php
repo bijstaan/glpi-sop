@@ -41,6 +41,16 @@ $can_draft = Session::haveRight(Sop::$rightname, UPDATE);
 $entities_id       = isset($_REQUEST['entities_id'])
     ? (int) $_REQUEST['entities_id']
     : (int) Session::getActiveEntity();
+
+// The entity rides in the form as a hidden field, so it is the client's to
+// choose, and everything below — the candidate listing, the provider call it
+// is billed against, the SOP that gets written — is scoped by it. Falling back
+// rather than refusing: a stale bookmark should land on the session's own
+// entity, not an error page. Author::materialise() checks CREATE again on the
+// way past; this one saves the wasted model call.
+if (!Session::haveAccessToEntity($entities_id)) {
+    $entities_id = (int) Session::getActiveEntity();
+}
 $itilcategories_id = (int) ($_REQUEST['itilcategories_id'] ?? 0);
 $days              = (int) ($_REQUEST['days'] ?? $cfg['authoring_window_days']);
 

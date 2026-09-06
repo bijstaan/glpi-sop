@@ -167,6 +167,9 @@ class SopTriggerTab extends CommonGLPI
         }
 
         $chosen = (string) array_key_first($criteria);
+        // A DOM id, not a token: GLPI's own Html:: helpers seed widget ids this
+        // way so two of the same dropdown on one page do not collide. Predicting
+        // it buys an attacker an element id already readable in the markup.
         $rand   = mt_rand();
 
         echo "<div class='mt-3 pt-3 border-top'>";

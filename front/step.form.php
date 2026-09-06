@@ -648,6 +648,9 @@ function render_add_condition(int $steps_id, Sop $sop, array $parents, array $nu
     }
 
     $subject = Condition::firstSubject($subjects);
+    // A DOM id, not a token: GLPI's own Html:: helpers seed widget ids this
+    // way so two of the same dropdown on one page do not collide. Predicting
+    // it buys an attacker an element id already readable in the markup.
     $rand    = mt_rand();
 
     echo "<div class='mt-3 pt-3 border-top'>";
