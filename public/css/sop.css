@@ -1,0 +1,526 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Bijstaan */
+/**
+ * SOP checklist.
+ *
+ * Reads as a document rather than a form. A procedure is something a
+ * technician follows with one hand while doing the work with the other, so the
+ * layout puts the numbering and the question where the eye lands and keeps
+ * every control on one predictable column to the right of them.
+ *
+ * Colours come from Tabler's variables, which GLPI 11 themes — including its
+ * dark mode. Hard-coded values are fallbacks for a theme that has not defined
+ * the variable, never the intended colour.
+ */
+
+/* --tblr-bg-surface-tertiary, never --tblr-bg-surface-secondary.
+ *
+ * Core declares `--tblr-bg-surface-secondary: var(--tblr-light)` on :root, and
+ * its dark palette redefines `--tblr-light` to #e6e6e6 without redefining the
+ * surface token — so that one paints a near-white panel on a black page, with
+ * body-coloured (#e6e6e6) text on it. Measured at 1.00:1. The tertiary surface
+ * is derived from the body background and follows the theme.
+ */
+
+.sop-container,
+.sop-panel {
+    --sop-rule: var(--tblr-border-color, #dbe0e5);
+    --sop-muted: var(--tblr-secondary, #6c757d);
+}
+
+/* ------------------------------------------------- fields-panel reminder */
+
+/* Lives at the top of the ITIL fields panel, which does not scroll with the
+   timeline. Deliberately quiet when there is nothing outstanding — a reminder
+   that shouts on every ticket is a reminder nobody reads by Wednesday. */
+.sop-panel {
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    /* A section of the field panel: core's rules top and bottom come from
+       .accordion-item, and this supplies the inline padding that lines the
+       rows up with the section headers above it. */
+    padding: 16px 20px;
+}
+
+.sop-panel-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: .125rem .5rem;
+    padding: .5rem .625rem;
+    border: 1px solid var(--tblr-border-color, #dbe0e5);
+    border-left: 3px solid var(--tblr-blue, #206bc4);
+    border-radius: var(--tblr-border-radius, 4px);
+    background: var(--tblr-bg-surface, #fff);
+    color: inherit;
+    text-decoration: none;
+    font-size: .8125rem;
+}
+
+.sop-panel-row:hover {
+    text-decoration: none;
+    border-color: var(--tblr-blue, #206bc4);
+}
+
+.sop-panel-title {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sop-panel-count {
+    font-variant-numeric: tabular-nums;
+    color: var(--sop-muted);
+}
+
+.sop-panel-bar {
+    grid-column: 1 / -1;
+    /* Margin, or the bar sits tight under the title and reads as an
+       underline on the link rather than as a progress indicator. */
+    margin: .25rem 0 .125rem;
+    height: 4px;
+    background: var(--tblr-bg-surface-tertiary, #f1f3f5);
+}
+
+.sop-panel-note {
+    grid-column: 1 / -1;
+    color: var(--sop-muted);
+}
+
+/* The one state worth colour: required work outstanding on a procedure that
+   will refuse the close. */
+.sop-panel-row--blocking {
+    border-left-color: var(--tblr-red, #d63939);
+}
+
+.sop-panel-row--blocking .sop-panel-note {
+    color: var(--tblr-red, #d63939);
+}
+
+.sop-panel-row--done {
+    border-left-color: var(--tblr-green, #2fb344);
+    opacity: .75;
+}
+
+/* The solution action while an enforcing procedure is outstanding. Left in
+   place and visibly unavailable rather than removed: a button that vanishes
+   reads as a bug, and its tooltip is where the reason lives. */
+.answer-action.sop-blocked {
+    opacity: .5;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+/* ------------------------------------------------------------------ run */
+
+/* The run sits inside a timeline card, so it draws no frame of its own —
+   only a heading rule to separate its title from the checklist below. */
+.sop-run-head {
+    padding-bottom: .5rem;
+    border-bottom: 1px solid var(--sop-rule);
+    margin-bottom: .75rem;
+}
+
+.sop-run-title {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.sop-run--abandoned {
+    opacity: .7;
+}
+
+/* Landing here from the fields-panel link: a brief highlight, so the eye finds
+   the procedure among the followups it was scrolled past. */
+.sop-container:target,
+.timeline-item:target .sop-run {
+    animation: sop-flash 1.6s ease-out 1;
+}
+
+@keyframes sop-flash {
+    from { background: var(--tblr-yellow-lt, #fff8e6); }
+    to   { background: transparent; }
+}
+
+.sop-description {
+    color: var(--sop-muted);
+    font-size: .875rem;
+}
+
+.sop-progress .progress {
+    background: var(--tblr-bg-surface-tertiary, #f1f3f5);
+}
+
+/* -------------------------------------------------------------- sections */
+
+.sop-section-head {
+    margin: 1.25rem 0 .5rem;
+    padding-bottom: .25rem;
+    border-bottom: 1px solid var(--sop-rule);
+    font-weight: 600;
+    font-size: .8125rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--sop-muted);
+}
+
+.sop-section-head:first-child {
+    margin-top: 0;
+}
+
+.sop-section-help {
+    margin-top: .25rem;
+    font-weight: 400;
+    font-size: .8125rem;
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+/* ----------------------------------------------------------------- steps */
+
+.sop-step {
+    display: grid;
+    /* Number, body, actions. The number column is fixed so labels line up
+       whether a step is "3" or "12b"; the actions column is fixed so buttons
+       do not shift as steps are answered. */
+    grid-template-columns: 2.5rem 1fr auto;
+    gap: .25rem .5rem;
+    padding: .625rem .25rem;
+    border-bottom: 1px solid var(--sop-rule);
+}
+
+.sop-step:last-child {
+    border-bottom: 0;
+}
+
+/* A conditional step is indented under the answer that opened it, so the
+   branch is visible without reading the numbering. */
+.sop-step--nested {
+    padding-left: 1.5rem;
+    border-left: 2px solid var(--sop-rule);
+}
+
+.sop-step--done .sop-step-label,
+.sop-step--skipped .sop-step-label {
+    color: var(--sop-muted);
+}
+
+.sop-step--skipped .sop-step-label {
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+}
+
+.sop-step-number {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--sop-muted);
+    padding-top: .125rem;
+}
+
+.sop-step-body {
+    min-width: 0;
+}
+
+.sop-step-label {
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+/* The asterisk carries real meaning — this step can hold the ticket open —
+   so it is coloured rather than left as punctuation. */
+.sop-required {
+    margin-left: .25rem;
+    color: var(--tblr-red, #d63939);
+    font-weight: 700;
+}
+
+.sop-step-help {
+    margin-top: .125rem;
+    font-size: .8125rem;
+    color: var(--sop-muted);
+}
+
+.sop-step-input {
+    margin-top: .5rem;
+}
+
+.sop-step-input:empty {
+    margin-top: 0;
+}
+
+.sop-step-meta {
+    margin-top: .25rem;
+    font-size: .75rem;
+    color: var(--sop-muted);
+    min-height: 1rem;
+}
+
+.sop-step-error {
+    font-size: .8125rem;
+}
+
+.sop-step-note textarea {
+    font-size: .8125rem;
+}
+
+/* Actions stay out of the way until the row is approached, so a long
+   procedure is not a wall of buttons. */
+.sop-step-actions {
+    display: flex;
+    align-items: flex-start;
+    gap: .125rem;
+    opacity: 0;
+    transition: opacity .12s ease-in-out;
+}
+
+.sop-step:hover .sop-step-actions,
+.sop-step:focus-within .sop-step-actions {
+    opacity: 1;
+}
+
+/* Touch has no hover, so hiding the actions there hides them for good. */
+@media (hover: none) {
+    .sop-step-actions {
+        opacity: 1;
+    }
+}
+
+.sop-check .form-check-label {
+    cursor: pointer;
+}
+
+/* ------------------------------------------------ the linked-ticket step */
+
+/* The link to the child is the answer, so it reads as a line of the record
+   rather than as a control: no border, no button chrome, just the ticket and
+   what state it is in. The note under it is the one thing a technician needs
+   to know — that this step is waiting on somebody else. */
+.sop-child-ticket-link {
+    font-size: .875rem;
+}
+
+.sop-child-ticket .form-text {
+    margin-top: .125rem;
+}
+
+/* ---------------------------------------------------- the approval step */
+
+/* Reads as a statement of record, not as a control — there is nothing here to
+   operate. The state line carries the weight; the requirement under it is the
+   quiet half. */
+.sop-approval-state {
+    font-size: .875rem;
+    display: flex;
+    align-items: center;
+}
+
+.sop-approval .form-text {
+    margin-top: .125rem;
+}
+
+/* ------------------------------------------------------------------- log */
+
+.sop-run-log {
+    padding-top: .75rem;
+    border-top: 1px solid var(--sop-rule);
+}
+
+.sop-log-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: .8125rem;
+    max-height: 18rem;
+    overflow-y: auto;
+}
+
+.sop-log-list li {
+    display: flex;
+    gap: .75rem;
+    padding: .1875rem 0;
+}
+
+.sop-log-when {
+    flex: 0 0 10rem;
+    color: var(--sop-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------- narrow */
+
+@media (max-width: 640px) {
+    .sop-step {
+        grid-template-columns: 2rem 1fr;
+    }
+
+    /* Actions drop to their own row rather than squeezing the question. */
+    .sop-step-actions {
+        grid-column: 2;
+        opacity: 1;
+    }
+
+    .sop-log-list li {
+        flex-direction: column;
+        gap: 0;
+    }
+}
+
+/* -------------------------------------------------------------- builder */
+
+.sop-builder-steps td {
+    vertical-align: middle;
+}
+
+.sop-builder-depends {
+    font-size: .8125rem;
+    color: var(--sop-muted);
+}
+
+.sop-builder-rank {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------- dark theme */
+
+/*
+ * Muted / helper text on the dark palettes.
+ *
+ * Core's `.text-muted` is `color: var(--tblr-muted) !important`
+ * (css/includes/_base.scss:630) — a property override, whatever its
+ * specificity, silently loses to that. The working mechanic is to redefine
+ * the VARIABLE inside this plugin's own containers, so core's !important
+ * legitimately resolves against our value. `.form-text` keys to
+ * `--tblr-secondary-color`, a Tabler literal GLPI's dark palettes never
+ * re-darken (rgba(31,41,55,.75) — near-invisible on a dark card), so that
+ * variable is redefined in the same scope.
+ *
+ * `transparent 12%` is the measured house formula: on auror_dark
+ * (body #1f2936, body text #9ca8c0) it clears 4.5:1 with margin against
+ * both the body and the lighter card surface, and only gains margin on
+ * darker/midnight. 28% was measured UNDER the floor (3.75:1) — do not
+ * "restore" it. Never self-reference a variable in its own redefine
+ * (circular, silently invalid).
+ *
+ * Scope: `.sop-container` (timeline run), `.sop-panel` (ITIL fields
+ * panel), and `.glpisop-surface` — the wrapper class every plugin-rendered
+ * page and tab carries, including the core-showFormHeader() SOP form,
+ * which has no plugin container of its own without it.
+ */
+:root[data-glpi-theme-dark="1"] .sop-container,
+:root[data-glpi-theme-dark="1"] .sop-panel,
+:root[data-glpi-theme-dark="1"] .glpisop-surface,
+:root[data-glpi-theme-dark="1"] .glpisop-config {
+    --tblr-muted: color-mix(in srgb, var(--tblr-body-color), transparent 12%);
+    --tblr-secondary-color: color-mix(in srgb, var(--tblr-body-color), transparent 12%);
+    --sop-muted: color-mix(in srgb, var(--tblr-body-color), transparent 12%);
+}
+
+/*
+ * The required-step asterisk keeps its severity red, but full-saturation
+ * `--tblr-red` (#d63939) measures 2.95:1 on the dark card. A tone lift —
+ * a property override, never a variable self-reference — keeps it clearly
+ * "red" while clearing the floor.
+ */
+:root[data-glpi-theme-dark="1"] .sop-container .sop-required,
+:root[data-glpi-theme-dark="1"] .glpisop-surface .sop-required {
+    color: color-mix(in srgb, var(--tblr-red, #d63939), white 40%);
+}
+
+/* Same severity red on the blocking panel note. */
+:root[data-glpi-theme-dark="1"] .sop-panel .sop-panel-row--blocking .sop-panel-note {
+    color: color-mix(in srgb, var(--tblr-red, #d63939), white 40%);
+}
+
+/*
+ * Status badges inside the plugin's surfaces, measured on auror_dark:
+ *
+ * - `-lt` badges are not theme-safe: their text colour (core paints it with
+ *   !important, hence the matching !important here) sits under the 4.5:1
+ *   floor on the badge's own translucent tint (bg-orange-lt "enforcing"
+ *   measured 4.00:1 on the adoption page). Tone lift on the fixed severity
+ *   colour — a property override; a variable self-reference would be
+ *   circular and silently invalid.
+ * - `.badge.bg-secondary` is a core-wide gap in BOTH themes (the dark half
+ *   also found by the canonical cross-plugin re-audit on glpikedb): the
+ *   `bg-*` utility sets only the background and the text inherits the
+ *   page's ambient colour — measured 1.09:1 on auror_dark (light #b0bbd4
+ *   badge, light ambient text) and 1.43:1 on auror light (gray #6b7280
+ *   badge, dark ambient text) on the SOP form's revision badge. The fix is
+ *   the pairing Tabler itself defines for the token: --tblr-secondary-fg.
+ *   The dark rule keeps !important so it also beats an explicit
+ *   `.text-white` (correct on light's dark badge, wrong on dark's light
+ *   one).
+ */
+:root[data-glpi-theme-dark="1"] .glpisop-surface .badge.bg-orange-lt {
+    color: color-mix(in srgb, var(--tblr-orange, #f76707), white 35%) !important;
+}
+:root[data-glpi-theme-dark="1"] .glpisop-surface .badge.bg-green-lt {
+    color: color-mix(in srgb, var(--tblr-green, #2fb344), white 35%) !important;
+}
+:root[data-glpi-theme-dark="1"] .glpisop-surface .badge.bg-secondary-lt {
+    color: color-mix(in srgb, var(--tblr-secondary, #6c757d), white 35%) !important;
+}
+.glpisop-surface .badge.bg-secondary,
+.sop-container .badge.bg-secondary {
+    color: var(--tblr-secondary-fg, #fff);
+}
+:root[data-glpi-theme-dark="1"] .glpisop-surface .badge.bg-secondary,
+:root[data-glpi-theme-dark="1"] .sop-container .badge.bg-secondary {
+    color: var(--tblr-secondary-fg, #000) !important;
+}
+
+/*
+ * Core-wide gap, not this plugin's own (same finding, same fix as glpikedb /
+ * glpiservice): an INACTIVE `.nav-link` (the "Others" tab-overflow core
+ * renders on any form) reads through --tblr-nav-link-color -> gray-500,
+ * never checked against a non-black dark body — measured 1.76:1 inside the
+ * SOP form's wrapper. Scoped to non-active links only: the active tab's
+ * core colour (--glpi-tabs-fg) already clears the floor on its own
+ * --glpi-tabs-active-bg, and this formula would not.
+ */
+:root[data-glpi-theme-dark="1"] .glpisop-surface .nav-link:not(.active) {
+    color: color-mix(in srgb, var(--tblr-body-color), transparent 12%);
+}
+
+/*
+ * Danger-toned buttons: full-saturation --tblr-danger text measured
+ * 2.95–3.15:1 on the dark card ("This procedure does not apply",
+ * "Delete this step", core's own "Delete permanently" inside the wrapper).
+ * Tabler buttons read their idle colour from --tblr-btn-color, so the
+ * variable is redefined (referencing --tblr-red, never itself) — hover and
+ * active states keep core's --tblr-btn-hover-color/-active-color pairings,
+ * which fill the button and are already correct.
+ */
+:root[data-glpi-theme-dark="1"] .glpisop-surface .btn-outline-danger,
+:root[data-glpi-theme-dark="1"] .glpisop-surface .btn-ghost-danger,
+:root[data-glpi-theme-dark="1"] .sop-container .btn-outline-danger,
+:root[data-glpi-theme-dark="1"] .sop-container .btn-ghost-danger {
+    --tblr-btn-color: color-mix(in srgb, var(--tblr-red, #d63939), white 40%);
+}
+
+/*
+ * The blocked solution action, on dark. Two separate findings meet here:
+ *
+ * 1. Core-wide gap, not this plugin's own: core's answer-dropdown
+ *    "Add a solution" entry paints --glpi-timeline-solution-fg on
+ *    --glpi-timeline-solution-bg, a pairing that measures 4.41:1 on
+ *    auror_dark before this plugin touches it at all (every ticket's
+ *    dropdown, blocked or not — reported upstream rather than fixed
+ *    wholesale). It lands in this plugin's scope only in the blocked
+ *    state, so — the same way glpikedb scoped core's bg-secondary badge
+ *    gap — the lift is applied to exactly that state, via the same token.
+ * 2. The plugin's own .5 opacity fade is the wrong disabled cue on a dark
+ *    page: fading an already-light label pulls it INTO the background.
+ *    Desaturation reads "unavailable" at least as clearly and costs
+ *    almost no legibility, so dark keeps a light fade plus grayscale.
+ */
+:root[data-glpi-theme-dark="1"] .answer-action.sop-blocked {
+    opacity: .85;
+    filter: grayscale(.85);
+}
+
+:root[data-glpi-theme-dark="1"] .answer-action.sop-blocked.action-solution {
+    color: color-mix(in srgb, var(--glpi-timeline-solution-fg, #89bfd3), white 25%);
+}
