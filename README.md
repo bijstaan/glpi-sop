@@ -361,7 +361,7 @@ because a read-only technician has a real use for the first.
 ## Design notes
 
 The interesting decisions and the traps found while building this are in
-[docs/spec.md](docs/spec.md) — in particular why visibility is computed only on
+[docs/spec.md](https://gitlab.rfni.dev/norsewind/glpi-erpnext-mods/-/wikis/glpi-sop/spec) — in particular why visibility is computed only on
 the server, why the unique key on `runs` is load-bearing rather than defensive,
 and the GLPI 11 CSRF behaviour that makes `X-Requested-With` mandatory on a
 `fetch()`.
