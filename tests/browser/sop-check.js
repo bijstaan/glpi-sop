@@ -12,9 +12,14 @@
 // Setup (publishing the SOP, adding a trigger, raising a matching ticket) runs
 // over HTTP first, because none of it is what is under test.
 const { chromium } = require('playwright');
+const fs = require('fs');
+const path = require('path');
+const { fullPage } = require('./shot');
+const { openDark, audit } = require('./dark');
 
 const BASE = 'http://localhost:8081';
 const SHOTS = process.env.SHOT_DIR || '.';
+const DARK_SHOTS = path.join(SHOTS, 'dark');
 
 const fail = [];
 function check(name, cond, detail) {
@@ -395,6 +400,34 @@ async function awaitProgress(page, was, label) {
   await page.screenshot({ path: `${SHOTS}/sop-08-adoption.png` });
 
   check('no JavaScript errors on the page', jsErrors.length === before, jsErrors.join(' | '));
+
+
+  // --- The dark palette --------------------------------------------------
+  //
+  // The checklist is a timeline entry and the authoring screens are this
+  // plugin's own markup, so both sit on colours GLPI's dark stylesheet knows
+  // nothing about.
+  fs.mkdirSync(DARK_SHOTS, { recursive: true });
+  console.log('\nswitching to the dark palette...');
+
+  const dark = await openDark(browser, { plugin: 'glpisop' });
+
+  for (const [url, name, shot] of [
+    [`${BASE}/plugins/glpisop/front/sop.php`, 'the SOP list', 'sop-dark-01-list.png'],
+    [`${BASE}/plugins/glpisop/front/overview.php`, 'the adoption overview', 'sop-dark-02-adoption.png'],
+    [`${BASE}/plugins/glpisop/front/config.php`, 'the settings page', 'sop-dark-03-settings.png'],
+  ]) {
+    await dark.goto(url, { waitUntil: 'networkidle' });
+    await dark.waitForTimeout(500);
+    const bad = await audit(dark, 'glpisop-');
+    check(`[dark] ${name}: no near-white panel carrying dark-body text`,
+      bad.whiteBg.length === 0, JSON.stringify(bad.whiteBg));
+    check(`[dark] ${name}: muted text meets 4.5:1`,
+      bad.lowContrast.length === 0, JSON.stringify(bad.lowContrast));
+    await fullPage(dark, `${DARK_SHOTS}/${shot}`);
+  }
+
+  check('[dark] no page errors', dark.__darkErrors.length === 0, dark.__darkErrors.join(' | '));
 
   await browser.close();
 

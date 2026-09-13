@@ -7,7 +7,7 @@ An administrator writes a procedure once. It attaches itself to the tickets it
 applies to, asks the technician the questions that are relevant, and records what
 was answered — by whom, when — on the ticket itself.
 
-![Checklist in the ticket timeline, branch open, reminder in the fields panel](docs/screenshots/sop-checklist.png)
+![Checklist in the ticket timeline, branch open, reminder in the fields panel](docs/screenshots/sop-02-branch-open.png)
 
 ## What makes it more than a checklist field
 
@@ -26,9 +26,9 @@ was answered — by whom, when — on the ticket itself.
 Answer *Yes* at step 3 and 3a/3b are never asked: the run is complete at 3 of 3.
 Answer *No* and they appear in place with no reload, and the run reopens.
 
-![A completed run, including a skipped step and its reason](docs/screenshots/sop-complete.png)
+![A completed run, including a skipped step and its reason](docs/screenshots/sop-04-complete.png)
 
-![A completed run, locked](docs/screenshots/sop-locked.png)
+![A completed run, locked](docs/screenshots/sop-09-locked.png)
 
 ## Features
 
@@ -70,7 +70,7 @@ Answer *No* and they appear in place with no reload, and the run reopens.
   steps table. A step most technicians skip usually asks for something
   unavailable, unclear, or already done elsewhere.
 
-  ![Adoption reporting](docs/screenshots/sop-adoption.png)
+  ![Adoption reporting](docs/screenshots/sop-08-adoption.png)
 
 Technician (central) interface only. Requesters never see a procedure or its
 answers.
@@ -99,9 +99,9 @@ installed.
 | *Steps* | sections and steps; open a step for its type options, required flag, or gate |
 | *Triggers* | the criteria under which it attaches itself, joined with AND or OR |
 
-![The step builder](docs/screenshots/sop-builder.png)
+![The step builder](docs/screenshots/sop-06-builder.png)
 
-![The trigger editor](docs/screenshots/sop-triggers.png)
+![The trigger editor](docs/screenshots/sop-07-triggers.png)
 
 Bind an SOP to a ticket template from the template's own **SOPs** tab (*Setup →
 Templates*). Attach one from a business rule by adding the **Attach an SOP**
