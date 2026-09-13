@@ -399,7 +399,7 @@ final class Author
             '  - Mark a step required only where skipping it would make the rest unreliable.',
             '  - Use sections only if the work genuinely falls into phases. Fewer than about six',
             '    steps never needs them. Leave the section empty on every step if not.',
-            '  - Take out anything that belongs to one occurrence: a customer, their people, a',
+            '  - Take out anything that belongs to one occurrence: an entity, their people, a',
             '    hostname, a ticket number. This procedure will be run on other tickets.',
             '  - If these tickets are not variations of one problem, set usable to "no" and say',
             '    so in gaps. Do not stitch two procedures together to have something to return.',
