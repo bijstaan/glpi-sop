@@ -275,7 +275,7 @@ followup reaching the timeline. It renders the authoring tabs and the adoption
 page, fails on any JavaScript error, and produces the screenshots above.
 
 Three things to know before reading the code: visibility is computed only on the
-server, the unique key on `runs` is load-bearing rather than defensive, and GLPI
+server, the unique key on `runs` is essential for consistency, and GLPI
 11's CSRF behaviour makes `X-Requested-With` mandatory on a `fetch()`.
 
 ## Licence
