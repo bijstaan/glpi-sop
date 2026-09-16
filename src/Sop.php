@@ -96,6 +96,22 @@ class Sop extends CommonDBTM
         );
     }
 
+    /**
+     * A new SOP is recursive unless the author says otherwise.
+     *
+     * The column defaults to 1, the shipped example uses 1, and both
+     * programmatic authors — `Author::materialise()` and `AiTools` — write 1.
+     * The form was the odd one out: core renders its "Child entities" checkbox
+     * from `getEmpty()`, where every field is the empty string, so the box came
+     * up unticked and a procedure written in a parent entity was invisible to
+     * every entity beneath it. Setting it here is what makes the checkbox agree
+     * with the rest of the plugin.
+     */
+    public function post_getEmpty()
+    {
+        $this->fields['is_recursive'] = 1;
+    }
+
     public function prepareInputForAdd($input)
     {
         $input = $this->validate($input);
@@ -293,6 +309,54 @@ class Sop extends CommonDBTM
         echo '<td>' . __s('Active') . '</td><td>';
         \Dropdown::showYesNo('is_active', $this->fields['is_active'] ?? 1);
         echo '</td></tr>';
+
+        // Where the procedure lives.
+        //
+        // Core takes the entity from the entity selector and shows it as a
+        // badge in the form header, which is right for an asset: you are
+        // standing in the entity you are adding to. Procedures are written from
+        // the Setup menu, and an administrator working there is usually looking
+        // at the whole tree — a view whose active entity *is* the root. So
+        // every SOP written in that view landed in Root entity, silently, and
+        // the badge saying "Root entity" read as chrome rather than as the
+        // answer to a question nobody had been asked.
+        //
+        // Asking is the fix. The picker defaults to the selector's own entity,
+        // so working inside one entity is unchanged, and the tree view becomes
+        // a decision instead of a surprise. It is offered on a new SOP only:
+        // moving an existing one is a different operation, with runs attached
+        // to it, and core already has Actions > Change entity for that.
+        //
+        // The field is deliberately named `entities_id`, the same as the hidden
+        // input core's showFormHeader() emitted above. This select comes later
+        // in the form and PHP keeps the last occurrence of a repeated name, so
+        // the author's choice is what reaches add() — and, because
+        // sop.form.php checks CREATE against the submitted input, what the
+        // rights check authorises too.
+        if ($this->isNewItem() && Session::isMultiEntitiesMode()) {
+            echo "<tr class='tab_bg_1'>";
+            echo '<td>' . __s('Entity') . '</td>';
+            echo "<td colspan='3'>";
+            // No comment bubble and no add-an-entity button: both are core's
+            // defaults for a dropdown, and both are wrong here — one opens the
+            // entity's own description, the other offers to create an entity
+            // from inside a procedure form, and together they push the select
+            // into a third of the row it is sitting in.
+            \Entity::dropdown([
+                'name'                => 'entities_id',
+                'value'               => (int) ($this->fields['entities_id'] ?? Session::getActiveEntity()),
+                'entity'              => $_SESSION['glpiactiveentities'] ?? [],
+                'display_emptychoice' => false,
+                'comments'            => false,
+                'addicon'             => false,
+                'width'               => '100%',
+            ]);
+            echo "<div class='form-text'>"
+               . __s('Where the procedure lives. It is offered on items in this entity, and on '
+                   . 'items in the entities beneath it while “Child entities” stays ticked.', 'glpisop')
+               . '</div>';
+            echo '</td></tr>';
+        }
 
         echo "<tr class='tab_bg_1'>";
         echo '<td>' . __s('Applies to', 'glpisop') . '</td><td>';
