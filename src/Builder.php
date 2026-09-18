@@ -234,7 +234,7 @@ final class Builder
             echo "<span class='sop-section-name sop-section-name--fixed'>"
                . __s('Unfiled steps', 'glpisop') . '</span>';
         } else {
-            echo "<input type='text' class='sop-title-input sop-section-name' data-sop-field='name' "
+            echo "<input type='text' class='form-control sop-title-input sop-section-name' data-sop-field='name' "
                . "maxlength='255' placeholder='" . __s('Section name', 'glpisop') . "' value='"
                . self::e($section['name'] ?? '') . "'" . self::disabled($canedit) . '>';
         }
@@ -301,7 +301,7 @@ final class Builder
         echo "<span class='sop-step-number' data-sop-number>"
            . self::e($numbers[$steps_id] ?? '') . '</span>';
 
-        echo "<input type='text' class='sop-title-input' data-sop-field='label' maxlength='255' "
+        echo "<input type='text' class='form-control sop-title-input' data-sop-field='label' maxlength='255' "
            . "placeholder='" . __s('What the technician is asked to do', 'glpisop') . "' value='"
            . self::e($step['label']) . "'" . self::disabled($canedit) . '>';
 

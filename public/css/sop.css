@@ -154,7 +154,14 @@
 
 /* -------------------------------------------------------------- sections */
 
-.sop-section-head {
+/*
+ * From here to the end of the narrow-screen block, every step and section rule
+ * is scoped to `.sop-steps` — the wrapper renderRun() puts around the list —
+ * because the editor further down this file renders the same model with the
+ * same class names. See the note at the head of the builder section for what
+ * an unscoped rule here does to the editor.
+ */
+.sop-steps .sop-section-head {
     margin: 1.25rem 0 .5rem;
     padding-bottom: .25rem;
     border-bottom: 1px solid var(--sop-rule);
@@ -165,11 +172,11 @@
     color: var(--sop-muted);
 }
 
-.sop-section-head:first-child {
+.sop-steps .sop-section-head:first-child {
     margin-top: 0;
 }
 
-.sop-section-help {
+.sop-steps .sop-section-help {
     margin-top: .25rem;
     font-weight: 400;
     font-size: .8125rem;
@@ -179,7 +186,7 @@
 
 /* ----------------------------------------------------------------- steps */
 
-.sop-step {
+.sop-steps .sop-step {
     display: grid;
     /* Number, body, actions. The number column is fixed so labels line up
        whether a step is "3" or "12b"; the actions column is fixed so buttons
@@ -190,83 +197,83 @@
     border-bottom: 1px solid var(--sop-rule);
 }
 
-.sop-step:last-child {
+.sop-steps .sop-step:last-child {
     border-bottom: 0;
 }
 
 /* A conditional step is indented under the answer that opened it, so the
    branch is visible without reading the numbering. */
-.sop-step--nested {
+.sop-steps .sop-step--nested {
     padding-left: 1.5rem;
     border-left: 2px solid var(--sop-rule);
 }
 
-.sop-step--done .sop-step-label,
-.sop-step--skipped .sop-step-label {
+.sop-steps .sop-step--done .sop-step-label,
+.sop-steps .sop-step--skipped .sop-step-label {
     color: var(--sop-muted);
 }
 
-.sop-step--skipped .sop-step-label {
+.sop-steps .sop-step--skipped .sop-step-label {
     text-decoration: line-through;
     text-decoration-thickness: 1px;
 }
 
-.sop-step-number {
+.sop-steps .sop-step-number {
     font-variant-numeric: tabular-nums;
     font-weight: 600;
     color: var(--sop-muted);
     padding-top: .125rem;
 }
 
-.sop-step-body {
+.sop-steps .sop-step-body {
     min-width: 0;
 }
 
-.sop-step-label {
+.sop-steps .sop-step-label {
     font-weight: 500;
     line-height: 1.4;
 }
 
 /* The asterisk carries real meaning — this step can hold the ticket open —
    so it is coloured rather than left as punctuation. */
-.sop-required {
+.sop-steps .sop-required {
     margin-left: .25rem;
     color: var(--tblr-red, #d63939);
     font-weight: 700;
 }
 
-.sop-step-help {
+.sop-steps .sop-step-help {
     margin-top: .125rem;
     font-size: .8125rem;
     color: var(--sop-muted);
 }
 
-.sop-step-input {
+.sop-steps .sop-step-input {
     margin-top: .5rem;
 }
 
-.sop-step-input:empty {
+.sop-steps .sop-step-input:empty {
     margin-top: 0;
 }
 
-.sop-step-meta {
+.sop-steps .sop-step-meta {
     margin-top: .25rem;
     font-size: .75rem;
     color: var(--sop-muted);
     min-height: 1rem;
 }
 
-.sop-step-error {
+.sop-steps .sop-step-error {
     font-size: .8125rem;
 }
 
-.sop-step-note textarea {
+.sop-steps .sop-step-note textarea {
     font-size: .8125rem;
 }
 
 /* Actions stay out of the way until the row is approached, so a long
    procedure is not a wall of buttons. */
-.sop-step-actions {
+.sop-steps .sop-step-actions {
     display: flex;
     align-items: flex-start;
     gap: .125rem;
@@ -274,19 +281,19 @@
     transition: opacity .12s ease-in-out;
 }
 
-.sop-step:hover .sop-step-actions,
-.sop-step:focus-within .sop-step-actions {
+.sop-steps .sop-step:hover .sop-step-actions,
+.sop-steps .sop-step:focus-within .sop-step-actions {
     opacity: 1;
 }
 
 /* Touch has no hover, so hiding the actions there hides them for good. */
 @media (hover: none) {
-    .sop-step-actions {
+    .sop-steps .sop-step-actions {
         opacity: 1;
     }
 }
 
-.sop-check .form-check-label {
+.sop-steps .sop-check .form-check-label {
     cursor: pointer;
 }
 
@@ -350,12 +357,12 @@
 /* --------------------------------------------------------------- narrow */
 
 @media (max-width: 640px) {
-    .sop-step {
+    .sop-steps .sop-step {
         grid-template-columns: 2rem 1fr;
     }
 
     /* Actions drop to their own row rather than squeezing the question. */
-    .sop-step-actions {
+    .sop-steps .sop-step-actions {
         grid-column: 2;
         opacity: 1;
     }
@@ -383,6 +390,26 @@
  * variable, never the intended colour. Nothing here needs a dark-theme override
  * of its own: the surfaces are core's `.card`, and muted text resolves through
  * `.glpisop-surface`, which the canvas carries — see the dark theme section.
+ *
+ * ## Every rule in this section is scoped to `.sop-builder`, and must stay so
+ *
+ * The editor and the runtime checklist above it are two renderings of the same
+ * model, so they share a vocabulary: `.sop-step`, `.sop-step-head`,
+ * `.sop-step-body`, `.sop-step-help`, `.sop-step-number` and
+ * `.sop-section-head` are all emitted by both {@see Builder} and
+ * {@see Renderer}. Unscoped, the checklist's
+ * `.sop-step { display: grid; grid-template-columns: 2.5rem 1fr auto }` also
+ * applied to the editor's cards, putting each card's entire body into a 2.5rem
+ * track — every control in the editor collapsed into a 40px column down the
+ * left-hand side, an open card rendering its labels one character per line.
+ * Nothing errors; the page simply arrives folded up.
+ *
+ * So: the checklist's step rules are scoped to `.sop-steps` (the wrapper
+ * Renderer::renderRun() puts around the list) and everything here is scoped to
+ * `.sop-builder`. Adding an unscoped `.sop-*` rule to either half re-opens the
+ * collision, and the renaming that would make the two vocabularies disjoint is
+ * a change to two PHP renderers, the builder's JS and six browser checks — the
+ * scope is the cheap half of that trade, not a shortcut past it.
  */
 
 /*
@@ -404,6 +431,19 @@
 .sop-builder {
     --sop-rule: var(--tblr-border-color, #dbe0e5);
     --sop-muted: var(--tblr-secondary, #6c757d);
+
+    /*
+     * The two gutters every block lines up against, so that a heading, its
+     * description, a step label and the editor under that step all start on
+     * the same two vertical rules instead of each one starting wherever its
+     * own row of controls happens to end.
+     *
+     * --sop-handle is the drag column (icon + gap) and disappears on a canvas
+     * nobody can edit, because the handle is not rendered there either.
+     * --sop-gutter adds the step-number column to it.
+     */
+    --sop-handle: 1.625rem;
+    --sop-gutter: calc(var(--sop-handle) + 2.25rem);
 
     display: flex;
     flex-direction: column;
@@ -454,79 +494,127 @@
 
 /* ------------------------------------------------------------- sections */
 
-.sop-section {
+.sop-builder .sop-section {
     display: flex;
     flex-direction: column;
     gap: .5rem;
 }
 
-.sop-section-head {
+.sop-builder .sop-section-head {
     display: flex;
     align-items: center;
     gap: .5rem;
 }
 
-/* An input that reads as a heading until it is clicked. The border arrives on
-   focus rather than sitting there, so the canvas reads as a procedure rather
-   than as a page of empty boxes. */
-.sop-title-input {
-    flex: 1 1 auto;
+/*
+ * An input that reads as a heading until it is clicked. The border arrives on
+ * hover and focus rather than sitting there, so the canvas reads as a
+ * procedure rather than as a page of empty boxes.
+ */
+.sop-builder .sop-title-input {
+    /* Basis 0, not auto: `.form-control` carries `width: 100%`, so an auto
+       basis makes the label claim the whole row and squeezes the chips beside
+       it into a wrapped, ragged column. From zero it takes what is left once
+       the chips have their one line. */
+    flex: 1 1 0;
     min-width: 6rem;
     padding: .125rem .375rem;
-    border: 1px solid transparent;
     border-radius: var(--tblr-border-radius, 4px);
-    background: transparent;
     color: inherit;
     font: inherit;
 }
 
-.sop-title-input:hover:not(:disabled) {
-    border-color: var(--sop-rule);
+/*
+ * Undoing the box, and the two core rules that have to be outranked to do it.
+ *
+ * The markup gives these inputs `.form-control`, and not for the Tabler
+ * styling: core paints every *bare* input with a border and a solid form
+ * background from
+ * `input:not(.submit):not(.form-control):not([type=submit])…` — ten :not()
+ * clauses deep, so no plugin selector made of classes can outrank it. Wearing
+ * `.form-control` takes the input out of that selector entirely.
+ *
+ * That leaves Tabler's own box (`.form-control`, 0,1,0) and the dark
+ * palettes' re-assertion of it
+ * (`:root[data-glpi-theme-dark="1"] .form-control`, 0,3,0) — which outranks
+ * anything sensible a plugin can write, and made the border-colour below a
+ * silent no-op in every dark theme while working in the light one. Both paint
+ * the border through `--tblr-border-color`, so the working move is the same
+ * one the dark-theme block at the end of this file uses: redefine the
+ * VARIABLE on the element, and let core's own rule resolve to nothing. The
+ * `input` qualifier then only has to beat plain `.form-control` for the
+ * background.
+ *
+ * `--sop-rule` is declared on `.sop-builder` and inherits down already
+ * resolved, so the hover and focus borders below are unaffected by the
+ * redefinition here.
+ */
+.sop-builder input.sop-title-input,
+.sop-builder input.sop-section-desc {
+    --tblr-border-color: transparent;
+
+    border: 1px solid transparent;
+    background: transparent;
+    box-shadow: none;
 }
 
-.sop-title-input:focus {
+.sop-builder input.sop-title-input:hover:not(:disabled),
+.sop-builder input.sop-section-desc:hover:not(:disabled),
+.sop-builder input.sop-section-desc:focus {
+    border-color: var(--sop-rule);
+    background: var(--tblr-bg-surface, #fff);
+}
+
+/* `:not(:disabled)` is not a guard here — a disabled input cannot take focus
+   — it is there to match the hover rule above declaration for declaration.
+   Without it the hover rule is the more specific of the two and wins for as
+   long as the pointer stays on the field, which is the whole of the time
+   between clicking a heading and typing in it. */
+.sop-builder input.sop-title-input:focus:not(:disabled) {
     outline: none;
     border-color: var(--tblr-blue, #206bc4);
     background: var(--tblr-bg-surface, #fff);
 }
 
-.sop-section-name {
+.sop-builder .sop-section-name {
     font-size: 1.0625rem;
     font-weight: 600;
 }
 
-.sop-section-name--fixed {
+.sop-builder .sop-section-name--fixed {
     flex: 1 1 auto;
+    margin-left: var(--sop-handle);
     padding: .125rem .375rem;
     font-size: 1.0625rem;
     font-weight: 600;
     color: var(--sop-muted);
 }
 
-.sop-section-desc {
-    border-color: transparent;
-    background: transparent;
+/* Lined up with the heading above it rather than with the card edge: the
+   handle sits in front of the heading input, so a description flush with the
+   block would read as belonging to the section boundary rather than to the
+   heading. On a canvas nobody can edit there is no handle, and no gutter. */
+.sop-builder .sop-section-desc {
+    /* `width: auto`, not `.form-control`'s 100%, which would be 100% of the
+       block *plus* the gutter and hang off the right edge by exactly the
+       gutter's width. */
+    width: auto;
+    margin-left: var(--sop-handle);
 }
 
-.sop-section-desc:hover:not(:disabled),
-.sop-section-desc:focus {
-    border-color: var(--sop-rule);
-    background: var(--tblr-bg-surface, #fff);
-}
-
-.sop-section-count {
+.sop-builder .sop-section-count {
     white-space: nowrap;
 }
 
 /* The unfiled block on a procedure that has no headings at all: it is the only
    block, so it is just the list of steps. The head is in the markup so that the
    browser can reveal it the moment a heading is added — see refreshUnfiled(). */
-.sop-section--bare > .sop-section-head,
-.sop-section--bare > .sop-section-desc {
+.sop-builder .sop-section--bare > .sop-section-head,
+.sop-builder .sop-section--bare > .sop-section-desc {
     display: none;
 }
 
-.sop-section-steps {
+.sop-builder .sop-section-steps {
     display: flex;
     flex-direction: column;
     gap: .375rem;
@@ -534,36 +622,36 @@
 
 /* Collapsing a heading hides its steps, not the heading. A procedure with six
    sections is navigated by closing the five that are not being edited. */
-.sop-section--collapsed .sop-section-steps,
-.sop-section--collapsed .sop-section-desc,
-.sop-section--collapsed > .sop-add-inline {
+.sop-builder .sop-section--collapsed .sop-section-steps,
+.sop-builder .sop-section--collapsed .sop-section-desc,
+.sop-builder .sop-section--collapsed > .sop-add-inline {
     display: none;
 }
 
 /* ---------------------------------------------------------------- steps */
 
-.sop-step {
+.sop-builder .sop-step {
     margin: 0;
 }
 
-.sop-step > .card-body {
+.sop-builder .sop-step > .card-body {
     padding: .5rem .625rem;
 }
 
-.sop-step-head {
+.sop-builder .sop-step-head {
     display: flex;
     align-items: center;
     gap: .5rem;
     cursor: pointer;
 }
 
-.sop-step-head input,
-.sop-step-head select,
-.sop-step-head button {
+.sop-builder .sop-step-head input,
+.sop-builder .sop-step-head select,
+.sop-builder .sop-step-head button {
     cursor: auto;
 }
 
-.sop-step-number {
+.sop-builder .sop-step-number {
     min-width: 1.75rem;
     font-variant-numeric: tabular-nums;
     font-weight: 600;
@@ -571,17 +659,21 @@
     text-align: right;
 }
 
-.sop-handle {
+.sop-builder .sop-handle {
     color: var(--sop-muted);
     cursor: grab;
 }
 
-.sop-dragging {
+.sop-builder .sop-dragging {
     opacity: .4;
 }
 
-.sop-step-chips {
+/* Never squeezed: the chips are a fixed reading of the step, and a chip list
+   that wraps changes the height of the row it describes. They keep their one
+   line here and drop to a row of their own on a narrow screen instead. */
+.sop-builder .sop-step-chips {
     display: flex;
+    flex: 0 0 auto;
     flex-wrap: wrap;
     gap: .25rem;
 }
@@ -590,11 +682,11 @@
    disappear when the card is open and the controls they summarise are visible
    instead. Two descriptions of the same setting, one of them stale, is what a
    summary that stays on screen becomes. */
-.sop-step--open .sop-step-chips {
+.sop-builder .sop-step--open .sop-step-chips {
     display: none;
 }
 
-.sop-chip {
+.sop-builder .sop-chip {
     padding: .0625rem .375rem;
     border-radius: 999px;
     background: var(--tblr-bg-surface-tertiary, #f1f3f5);
@@ -603,21 +695,21 @@
     white-space: nowrap;
 }
 
-.sop-chip--required {
+.sop-builder .sop-chip--required {
     background: var(--tblr-red-lt, #fbe8e8);
     color: var(--tblr-red, #d63939);
 }
 
-.sop-chip--gated {
+.sop-builder .sop-chip--gated {
     background: var(--tblr-blue-lt, #e4edf9);
     color: var(--tblr-blue, #206bc4);
 }
 
-.sop-chip--off {
+.sop-builder .sop-chip--off {
     text-decoration: line-through;
 }
 
-.sop-block-actions {
+.sop-builder .sop-block-actions {
     display: flex;
     gap: .125rem;
     margin-left: auto;
@@ -625,59 +717,63 @@
 
 /* Quiet until the row is under the pointer. A canvas showing six buttons on
    every one of thirty cards is a canvas nobody can read. */
-.sop-step .sop-block-actions,
-.sop-section-head .sop-block-actions {
+.sop-builder .sop-step .sop-block-actions,
+.sop-builder .sop-section-head .sop-block-actions {
     opacity: 0;
     transition: opacity .12s ease-in-out;
 }
 
-.sop-step:hover .sop-block-actions,
-.sop-step:focus-within .sop-block-actions,
-.sop-step--open .sop-block-actions,
-.sop-section:hover > .sop-section-head .sop-block-actions,
-.sop-section:focus-within > .sop-section-head .sop-block-actions {
+.sop-builder .sop-step:hover .sop-block-actions,
+.sop-builder .sop-step:focus-within .sop-block-actions,
+.sop-builder .sop-step--open .sop-block-actions,
+.sop-builder .sop-section:hover > .sop-section-head .sop-block-actions,
+.sop-builder .sop-section:focus-within > .sop-section-head .sop-block-actions {
     opacity: 1;
 }
 
-.sop-block-actions .btn {
+.sop-builder .sop-block-actions .btn {
     padding: .125rem .3125rem;
 }
 
-.sop-step--open {
+.sop-builder .sop-step--open {
     border-color: var(--tblr-blue, #206bc4);
 }
 
-.sop-step-body {
+/* Indented to the label column: an open card is the step's own page, and it
+   reads as one when everything in it starts where the question does. The rule
+   above it stays full width — it separates the card's two halves. */
+.sop-builder .sop-step-body {
     display: flex;
     flex-direction: column;
     gap: .75rem;
     margin-top: .625rem;
     padding-top: .625rem;
+    padding-left: var(--sop-gutter);
     border-top: 1px solid var(--sop-rule);
 }
 
-.sop-step-controls {
+.sop-builder .sop-step-controls {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 1rem;
 }
 
-.sop-step-type {
+.sop-builder .sop-step-type {
     display: flex;
     align-items: center;
     gap: .5rem;
     margin-bottom: 0;
 }
 
-.sop-step-type select {
+.sop-builder .sop-step-type select {
     width: auto;
     min-width: 14rem;
 }
 
 /* ----------------------------------------------------------- the gate */
 
-.sop-gate {
+.sop-builder .sop-gate {
     display: flex;
     flex-direction: column;
     gap: .5rem;
@@ -686,58 +782,58 @@
     border-radius: var(--tblr-border-radius, 4px);
 }
 
-.sop-gate-head {
+.sop-builder .sop-gate-head {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: .5rem;
 }
 
-.sop-gate-title {
+.sop-builder .sop-gate-title {
     font-size: .8125rem;
     font-weight: 600;
     color: var(--sop-muted);
 }
 
-.sop-gate-mode {
+.sop-builder .sop-gate-mode {
     width: auto;
     margin-left: auto;
 }
 
-.sop-gate-rows {
+.sop-builder .sop-gate-rows {
     display: flex;
     flex-direction: column;
     gap: .375rem;
 }
 
-.sop-gate-empty {
+.sop-builder .sop-gate-empty {
     margin: 0;
     font-size: .8125rem;
 }
 
-.sop-condition {
+.sop-builder .sop-condition {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: .375rem;
 }
 
-.sop-condition > .sop-cond-subject {
+.sop-builder .sop-condition > .sop-cond-subject {
     flex: 2 1 14rem;
     width: auto;
 }
 
-.sop-condition > .sop-cond-op {
+.sop-builder .sop-condition > .sop-cond-op {
     flex: 1 1 9rem;
     width: auto;
 }
 
-.sop-cond-value {
+.sop-builder .sop-cond-value {
     flex: 2 1 12rem;
     min-width: 0;
 }
 
-.sop-cond-value .select2-container {
+.sop-builder .sop-cond-value .select2-container {
     width: 100% !important;
 }
 
@@ -745,7 +841,7 @@
    offer as a fresh choice — a criterion this SOP's itemtypes no longer cover,
    or a gate pointing further down the procedure. Quiet rather than alarming:
    nothing is wrong with it, it simply cannot be edited here. */
-.sop-condition--frozen {
+.sop-builder .sop-condition--frozen {
     padding: .25rem .375rem;
     border-left: 2px solid var(--sop-rule);
     opacity: .85;
@@ -754,7 +850,7 @@
 /* A clause naming a step that is not in this procedure at all. Marked rather
    than removed: a branch that quietly stopped meaning anything is the one
    nobody notices — and this one stops the save until it is dealt with. */
-.sop-condition--broken > .sop-cond-subject {
+.sop-builder .sop-condition--broken > .sop-cond-subject {
     border-color: var(--tblr-red, #d63939);
 }
 
@@ -762,7 +858,7 @@
 
 /* A dashed row rather than a button, so that "add a step" reads as the next
    empty line of the procedure rather than as an action taken on it. */
-.sop-add-inline {
+.sop-builder .sop-add-inline {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -775,34 +871,38 @@
     font-size: .8125rem;
 }
 
-.sop-add-inline:hover {
+.sop-builder .sop-add-inline:hover {
     border-color: var(--tblr-blue, #206bc4);
     color: var(--tblr-blue, #206bc4);
 }
 
-.sop-add-inline--sm {
+.sop-builder .sop-add-inline--sm {
     width: auto;
     align-self: flex-start;
     padding: .1875rem .5rem;
 }
 
-.sop-builder--readonly .sop-title-input,
-.sop-builder--readonly .sop-section-desc {
+.sop-builder--readonly {
+    --sop-handle: 0rem;
+}
+
+.sop-builder--readonly input.sop-title-input,
+.sop-builder--readonly input.sop-section-desc {
     border-color: transparent;
 }
 
 @media (max-width: 768px) {
-    .sop-step-head {
+    .sop-builder .sop-step-head {
         flex-wrap: wrap;
     }
 
-    .sop-step-chips {
+    .sop-builder .sop-step-chips {
         order: 3;
         width: 100%;
-        padding-left: 2.25rem;
+        padding-left: var(--sop-gutter);
     }
 
-    .sop-block-actions {
+    .sop-builder .sop-block-actions {
         opacity: 1;
     }
 }
