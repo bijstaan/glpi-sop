@@ -368,18 +368,443 @@
 
 /* -------------------------------------------------------------- builder */
 
-.sop-builder-steps td {
-    vertical-align: middle;
+/*
+ * The procedure editor.
+ *
+ * Laid out as a document being written rather than a form being filled in: a
+ * column of cards, the one being edited open and the rest a line each. The
+ * measurements below all serve that one rule — a closed card is the height of
+ * its label so the shape of the whole procedure stays on screen, and an open
+ * one is allowed as much room as it needs because only one of them is ever
+ * open.
+ *
+ * Colours come from Tabler's variables, which GLPI 11 themes including its dark
+ * mode; hard-coded values are fallbacks for a theme that has not defined the
+ * variable, never the intended colour. Nothing here needs a dark-theme override
+ * of its own: the surfaces are core's `.card`, and muted text resolves through
+ * `.glpisop-surface`, which the canvas carries — see the dark theme section.
+ */
+
+/*
+ * The editor hides and shows with the `hidden` attribute — a closed step's
+ * body, the unsaved-changes flag, the joiner on a one-clause gate — and that
+ * only works if `hidden` actually wins.
+ *
+ * It does not on its own. `[hidden] { display: none }` comes from the browser's
+ * own stylesheet, and an author stylesheet beats the UA stylesheet at any
+ * specificity: Tabler's `.form-select { display: block }` and this file's
+ * `.sop-step-body { display: flex }` both override it. Without this rule every
+ * card renders open and the dirty flag never goes away — which is the sort of
+ * thing that looks like a JavaScript bug for an afternoon.
+ */
+.sop-builder [hidden] {
+    display: none !important;
 }
 
-.sop-builder-depends {
+.sop-builder {
+    --sop-rule: var(--tblr-border-color, #dbe0e5);
+    --sop-muted: var(--tblr-secondary, #6c757d);
+
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+    padding: .75rem 1rem 3rem;
+}
+
+/* The bar follows the canvas down: on a long procedure Save must never be a
+   scroll away from the step that was just written. */
+.sop-builder-bar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+    padding: .5rem .25rem;
+    background: var(--tblr-body-bg, #f5f7fb);
+    border-bottom: 1px solid var(--sop-rule);
+}
+
+.sop-builder-bar-summary {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
     font-size: .8125rem;
     color: var(--sop-muted);
 }
 
-.sop-builder-rank {
+.sop-builder-bar-actions {
+    display: flex;
+    gap: .375rem;
+    margin-left: auto;
+}
+
+.sop-builder-dirty {
+    display: inline-flex;
+    align-items: center;
+    color: var(--tblr-orange, #f76707);
+}
+
+.sop-builder-blocks {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+/* ------------------------------------------------------------- sections */
+
+.sop-section {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+}
+
+.sop-section-head {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+}
+
+/* An input that reads as a heading until it is clicked. The border arrives on
+   focus rather than sitting there, so the canvas reads as a procedure rather
+   than as a page of empty boxes. */
+.sop-title-input {
+    flex: 1 1 auto;
+    min-width: 6rem;
+    padding: .125rem .375rem;
+    border: 1px solid transparent;
+    border-radius: var(--tblr-border-radius, 4px);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+}
+
+.sop-title-input:hover:not(:disabled) {
+    border-color: var(--sop-rule);
+}
+
+.sop-title-input:focus {
+    outline: none;
+    border-color: var(--tblr-blue, #206bc4);
+    background: var(--tblr-bg-surface, #fff);
+}
+
+.sop-section-name {
+    font-size: 1.0625rem;
+    font-weight: 600;
+}
+
+.sop-section-name--fixed {
+    flex: 1 1 auto;
+    padding: .125rem .375rem;
+    font-size: 1.0625rem;
+    font-weight: 600;
+    color: var(--sop-muted);
+}
+
+.sop-section-desc {
+    border-color: transparent;
+    background: transparent;
+}
+
+.sop-section-desc:hover:not(:disabled),
+.sop-section-desc:focus {
+    border-color: var(--sop-rule);
+    background: var(--tblr-bg-surface, #fff);
+}
+
+.sop-section-count {
     white-space: nowrap;
+}
+
+/* The unfiled block on a procedure that has no headings at all: it is the only
+   block, so it is just the list of steps. The head is in the markup so that the
+   browser can reveal it the moment a heading is added — see refreshUnfiled(). */
+.sop-section--bare > .sop-section-head,
+.sop-section--bare > .sop-section-desc {
+    display: none;
+}
+
+.sop-section-steps {
+    display: flex;
+    flex-direction: column;
+    gap: .375rem;
+}
+
+/* Collapsing a heading hides its steps, not the heading. A procedure with six
+   sections is navigated by closing the five that are not being edited. */
+.sop-section--collapsed .sop-section-steps,
+.sop-section--collapsed .sop-section-desc,
+.sop-section--collapsed > .sop-add-inline {
+    display: none;
+}
+
+/* ---------------------------------------------------------------- steps */
+
+.sop-step {
+    margin: 0;
+}
+
+.sop-step > .card-body {
+    padding: .5rem .625rem;
+}
+
+.sop-step-head {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    cursor: pointer;
+}
+
+.sop-step-head input,
+.sop-step-head select,
+.sop-step-head button {
+    cursor: auto;
+}
+
+.sop-step-number {
+    min-width: 1.75rem;
     font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--sop-muted);
+    text-align: right;
+}
+
+.sop-handle {
+    color: var(--sop-muted);
+    cursor: grab;
+}
+
+.sop-dragging {
+    opacity: .4;
+}
+
+.sop-step-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+}
+
+/* The chips are the whole of what a closed card says beyond its label, so they
+   disappear when the card is open and the controls they summarise are visible
+   instead. Two descriptions of the same setting, one of them stale, is what a
+   summary that stays on screen becomes. */
+.sop-step--open .sop-step-chips {
+    display: none;
+}
+
+.sop-chip {
+    padding: .0625rem .375rem;
+    border-radius: 999px;
+    background: var(--tblr-bg-surface-tertiary, #f1f3f5);
+    color: var(--sop-muted);
+    font-size: .6875rem;
+    white-space: nowrap;
+}
+
+.sop-chip--required {
+    background: var(--tblr-red-lt, #fbe8e8);
+    color: var(--tblr-red, #d63939);
+}
+
+.sop-chip--gated {
+    background: var(--tblr-blue-lt, #e4edf9);
+    color: var(--tblr-blue, #206bc4);
+}
+
+.sop-chip--off {
+    text-decoration: line-through;
+}
+
+.sop-block-actions {
+    display: flex;
+    gap: .125rem;
+    margin-left: auto;
+}
+
+/* Quiet until the row is under the pointer. A canvas showing six buttons on
+   every one of thirty cards is a canvas nobody can read. */
+.sop-step .sop-block-actions,
+.sop-section-head .sop-block-actions {
+    opacity: 0;
+    transition: opacity .12s ease-in-out;
+}
+
+.sop-step:hover .sop-block-actions,
+.sop-step:focus-within .sop-block-actions,
+.sop-step--open .sop-block-actions,
+.sop-section:hover > .sop-section-head .sop-block-actions,
+.sop-section:focus-within > .sop-section-head .sop-block-actions {
+    opacity: 1;
+}
+
+.sop-block-actions .btn {
+    padding: .125rem .3125rem;
+}
+
+.sop-step--open {
+    border-color: var(--tblr-blue, #206bc4);
+}
+
+.sop-step-body {
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+    margin-top: .625rem;
+    padding-top: .625rem;
+    border-top: 1px solid var(--sop-rule);
+}
+
+.sop-step-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+}
+
+.sop-step-type {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-bottom: 0;
+}
+
+.sop-step-type select {
+    width: auto;
+    min-width: 14rem;
+}
+
+/* ----------------------------------------------------------- the gate */
+
+.sop-gate {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    padding: .625rem;
+    border: 1px dashed var(--sop-rule);
+    border-radius: var(--tblr-border-radius, 4px);
+}
+
+.sop-gate-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+}
+
+.sop-gate-title {
+    font-size: .8125rem;
+    font-weight: 600;
+    color: var(--sop-muted);
+}
+
+.sop-gate-mode {
+    width: auto;
+    margin-left: auto;
+}
+
+.sop-gate-rows {
+    display: flex;
+    flex-direction: column;
+    gap: .375rem;
+}
+
+.sop-gate-empty {
+    margin: 0;
+    font-size: .8125rem;
+}
+
+.sop-condition {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .375rem;
+}
+
+.sop-condition > .sop-cond-subject {
+    flex: 2 1 14rem;
+    width: auto;
+}
+
+.sop-condition > .sop-cond-op {
+    flex: 1 1 9rem;
+    width: auto;
+}
+
+.sop-cond-value {
+    flex: 2 1 12rem;
+    min-width: 0;
+}
+
+.sop-cond-value .select2-container {
+    width: 100% !important;
+}
+
+/* A clause this build understands and will save back untouched, but cannot
+   offer as a fresh choice — a criterion this SOP's itemtypes no longer cover,
+   or a gate pointing further down the procedure. Quiet rather than alarming:
+   nothing is wrong with it, it simply cannot be edited here. */
+.sop-condition--frozen {
+    padding: .25rem .375rem;
+    border-left: 2px solid var(--sop-rule);
+    opacity: .85;
+}
+
+/* A clause naming a step that is not in this procedure at all. Marked rather
+   than removed: a branch that quietly stopped meaning anything is the one
+   nobody notices — and this one stops the save until it is dealt with. */
+.sop-condition--broken > .sop-cond-subject {
+    border-color: var(--tblr-red, #d63939);
+}
+
+/* ------------------------------------------------------------ add rows */
+
+/* A dashed row rather than a button, so that "add a step" reads as the next
+   empty line of the procedure rather than as an action taken on it. */
+.sop-add-inline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: .3125rem;
+    border: 1px dashed var(--sop-rule);
+    border-radius: var(--tblr-border-radius, 4px);
+    background: transparent;
+    color: var(--sop-muted);
+    font-size: .8125rem;
+}
+
+.sop-add-inline:hover {
+    border-color: var(--tblr-blue, #206bc4);
+    color: var(--tblr-blue, #206bc4);
+}
+
+.sop-add-inline--sm {
+    width: auto;
+    align-self: flex-start;
+    padding: .1875rem .5rem;
+}
+
+.sop-builder--readonly .sop-title-input,
+.sop-builder--readonly .sop-section-desc {
+    border-color: transparent;
+}
+
+@media (max-width: 768px) {
+    .sop-step-head {
+        flex-wrap: wrap;
+    }
+
+    .sop-step-chips {
+        order: 3;
+        width: 100%;
+        padding-left: 2.25rem;
+    }
+
+    .sop-block-actions {
+        opacity: 1;
+    }
 }
 
 /* ------------------------------------------------------------- dark theme */

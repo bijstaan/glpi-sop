@@ -171,60 +171,6 @@ class Condition extends CommonDBChild
     }
 
     /**
-     * Everything this step can be gated on, as one list grouped by source.
-     *
-     * Source and subject were two dropdowns and a reload button, and they are
-     * one question: an author does not decide "I want to test a field" and
-     * then decide which field, they decide "I want to test the category". The
-     * pair is encoded as `<source>:<what>` — `step:21`, `field:urgency`,
-     * `approval:global_validation` — so the whole gate is one choice, and
-     * {@see splitSubject()} takes it apart again on the way in.
-     *
-     * A source with nothing to offer is not a group. An SOP written only for
-     * problems has no approvals to ask about, and the first step of a procedure
-     * has no earlier answer; an empty optgroup would be an invitation to write
-     * a clause that can never hold.
-     *
-     * @param array<int,array<string,mixed>> $parents earlier steps, from Step::candidateParents()
-     * @param array<int,string>              $numbers step id => display number
-     * @return array<string,array<string,string>> optgroup label => (key => label)
-     */
-    public static function subjects(Sop $sop, array $parents, array $numbers = []): array
-    {
-        $out = [];
-
-        if ($parents !== []) {
-            $group = [];
-            foreach ($parents as $parent) {
-                $group[self::SRC_STEP . ':' . (int) $parent['id']] = sprintf(
-                    '%s. %s',
-                    $numbers[(int) $parent['id']] ?? '?',
-                    (string) $parent['label']
-                );
-            }
-            $out[__('An answer earlier in this procedure', 'glpisop')] = $group;
-        }
-
-        $itemtypes = $sop->itemtypes();
-        $groups    = [
-            self::SRC_FIELD    => __('A field of the item', 'glpisop'),
-            self::SRC_APPROVAL => __('An approval on the item', 'glpisop'),
-        ];
-
-        foreach ($groups as $source => $label) {
-            $group = [];
-            foreach (self::criteriaFor($source, $itemtypes) as $key => $name) {
-                $group[$source . ':' . $key] = $name;
-            }
-            if ($group !== []) {
-                $out[$label] = $group;
-            }
-        }
-
-        return $out;
-    }
-
-    /**
      * The encoded subject back into the pair it names.
      *
      * @return array{0:string,1:string} [source, step id or criterion]
@@ -234,43 +180,6 @@ class Condition extends CommonDBChild
         $split = explode(':', $subject, 2);
 
         return [$split[0] ?? '', $split[1] ?? ''];
-    }
-
-    /**
-     * Is this one of the subjects actually on offer?
-     *
-     * Asked of the rendered list rather than of the vocabulary, because the
-     * list is already narrowed to what this SOP and this step can test — a
-     * clause gated on a *later* step is the one that produces a question
-     * nobody can ever reach.
-     *
-     * @param array<string,array<string,string>> $subjects
-     */
-    public static function subjectOffered(array $subjects, string $subject): bool
-    {
-        foreach ($subjects as $group) {
-            if (array_key_exists($subject, $group)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * The subject a freshly-opened add row starts on.
-     *
-     * @param array<string,array<string,string>> $subjects
-     */
-    public static function firstSubject(array $subjects): string
-    {
-        foreach ($subjects as $group) {
-            foreach (array_keys($group) as $key) {
-                return (string) $key;
-            }
-        }
-
-        return '';
     }
 
     /** @return array{name:string,kind:string,table?:string}|null */
@@ -415,8 +324,7 @@ class Condition extends CommonDBChild
      * Is this clause satisfied?
      *
      * `$item` is the ITIL object the run lives on, or null where the caller
-     * genuinely has none — the step editor's preview, an SOP being read outside
-     * a run. A clause that needs an item it was not given is *satisfied*, on
+     * genuinely has none — an SOP being read outside a run. A clause that needs an item it was not given is *satisfied*, on
      * the same principle as an unknown operator: a step shown unnecessarily
      * costs a question, a step hidden wrongly costs the answer.
      *

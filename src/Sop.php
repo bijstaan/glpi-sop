@@ -74,9 +74,17 @@ class Sop extends CommonDBTM
     }
 
     /**
+     * SOPs whose structure is being rewritten wholesale, and must not be
+     * re-derived until it is finished. See {@see deferStructureChange()}.
+     *
+     * @var array<int,bool>
+     */
+    private static array $deferred = [];
+
+    /**
      * Note that the structure changed.
      *
-     * Called from the step and section forms rather than from here, because
+     * Called from the step and section models rather than from here, because
      * that is where structural edits actually happen — the SOP row itself can
      * be renamed all day without the procedure being any different.
      */
@@ -85,7 +93,7 @@ class Sop extends CommonDBTM
         /** @var \DBmysql $DB */
         global $DB;
 
-        if ($sops_id <= 0) {
+        if ($sops_id <= 0 || isset(self::$deferred[$sops_id])) {
             return;
         }
 
@@ -110,6 +118,58 @@ class Sop extends CommonDBTM
     public function post_getEmpty()
     {
         $this->fields['is_recursive'] = 1;
+    }
+
+    /**
+     * The structure of this SOP changed: stamp it, and re-derive its runs.
+     *
+     * The recount is not housekeeping. Adding a required step to a published
+     * SOP, or marking an existing one required, changes what "complete" means
+     * for runs already in flight — and the enforcement check reads the
+     * denormalised counters on those runs, not the steps. Without it a ticket
+     * carrying a run that predates the new step could still be closed with it
+     * outstanding, which is precisely the case enforcement exists for.
+     */
+    public static function structureChanged(int $sops_id): void
+    {
+        if ($sops_id <= 0 || isset(self::$deferred[$sops_id])) {
+            return;
+        }
+
+        self::bumpVersion($sops_id);
+        Run::recountAllFor($sops_id);
+    }
+
+    /**
+     * Rewrite a procedure without re-deriving it after every row.
+     *
+     * The builder saves a whole procedure at once, and each step written inside
+     * that would otherwise bump the revision and recount every run of the SOP
+     * through {@see Step::post_updateItem()}. For a thirty-step save that is
+     * thirty full recomputations of numbers nobody reads until the last one —
+     * and thirty revisions for what the author did once.
+     *
+     * So the work is suppressed for the duration and done once at the end. The
+     * `finally` is the point: a half-written procedure whose runs still count
+     * the old steps is the one state that must not survive an exception, since
+     * enforcement would go on trusting counters that no longer describe
+     * anything.
+     */
+    public static function deferStructureChange(int $sops_id, callable $work): void
+    {
+        if ($sops_id <= 0) {
+            $work();
+            return;
+        }
+
+        self::$deferred[$sops_id] = true;
+
+        try {
+            $work();
+        } finally {
+            unset(self::$deferred[$sops_id]);
+            self::structureChanged($sops_id);
+        }
     }
 
     public function prepareInputForAdd($input)

@@ -89,8 +89,8 @@ class Step extends CommonDBChild
      * A step's gate clauses.
      *
      * Reads the hydrated list {@see self::allFor()} attached, and falls back to
-     * a query for the callers that hold a bare row — the step editor, the ajax
-     * endpoint — so that a row from either source answers the same question.
+     * a query for a caller holding a bare row, so that a row from either source
+     * answers the same question.
      *
      * @return array<int,array<string,mixed>>
      */
@@ -192,122 +192,6 @@ class Step extends CommonDBChild
         return $rows;
     }
 
-    /**
-     * Move a step one place up or down the procedure.
-     *
-     * The move is over the *flat* order an author is looking at, not within a
-     * section, and that is a fix rather than a preference. Reordering used to
-     * swap ranks with the adjacent step in the same section, while the builder
-     * decided whether to grey out an arrow from the step's position in the
-     * whole list — so at every section boundary the arrow was offered and did
-     * nothing at all. Two dead buttons per boundary, indistinguishable from a
-     * broken page.
-     *
-     * One press does exactly one thing, and which one depends on what is next
-     * to the step:
-     *
-     *  - the neighbour is under the same heading → they swap places;
-     *  - the neighbour is under a different one  → the step joins that heading
-     *    and stays exactly where it is on screen.
-     *
-     * Splitting the crossing out from the move is what makes the arrows a true
-     * inverse of each other. Doing both at once looks tidier and is not
-     * reversible: a step pushed down past a heading lands *below* its new
-     * neighbour, so pressing up returns it to the top of the new section rather
-     * than to the section it came from, and an author who overshot by one has
-     * no way back that does not overshoot the other way. The builder's tooltip
-     * says which of the two a press will do before it is pressed.
-     *
-     * Ranks are rewritten directly rather than through update(), and the
-     * version is bumped once at the end. Going through the model would fire
-     * post_updateItem() per row, and each of those recounts every run of the
-     * SOP — a dozen full recomputations to move one step past another, for a
-     * change that cannot alter any of the numbers being recomputed.
-     */
-    public static function reorder(int $sops_id, int $steps_id, string $direction): bool
-    {
-        /** @var \DBmysql $DB */
-        global $DB;
-
-        $flat     = self::allFor($sops_id, false);
-        $position = null;
-        foreach ($flat as $index => $row) {
-            if ((int) $row['id'] === $steps_id) {
-                $position = $index;
-                break;
-            }
-        }
-
-        $target = $position === null
-            ? null
-            : ($direction === 'up' ? $position - 1 : $position + 1);
-
-        if ($target === null || !isset($flat[$target])) {
-            // Genuinely at one end of the procedure. The builder greys these
-            // out; reaching here means a stale page.
-            return false;
-        }
-
-        $mine   = (int) $flat[$position]['plugin_glpisop_sections_id'];
-        $theirs = (int) $flat[$target]['plugin_glpisop_sections_id'];
-
-        if ($mine === $theirs) {
-            $moved = $flat[$position];
-            array_splice($flat, $position, 1);
-            array_splice($flat, $target, 0, [$moved]);
-            $new_section = $mine;
-        } else {
-            // Crossing a heading. The flat order is left alone on purpose —
-            // what changes is which heading the step is filed under, and the
-            // re-ranking below is what keeps it on the same line while that
-            // happens.
-            $new_section = $theirs;
-        }
-
-        self::rerank($flat, $steps_id, $new_section);
-
-        Sop::bumpVersion($sops_id);
-
-        return true;
-    }
-
-    /**
-     * Write ranks back so that reading the steps again reproduces `$flat`.
-     *
-     * Ranks are per section and section order dominates, so the only way to
-     * make an arbitrary flat order survive a round trip through allFor() is to
-     * number each section's members by their position in that order.
-     *
-     * @param array<int,array<string,mixed>> $flat the intended display order
-     */
-    private static function rerank(array $flat, int $moved_id, int $moved_section): void
-    {
-        /** @var \DBmysql $DB */
-        global $DB;
-
-        $ranks = [];
-        foreach ($flat as $row) {
-            $section = (int) $row['id'] === $moved_id
-                ? $moved_section
-                : (int) $row['plugin_glpisop_sections_id'];
-
-            $rank = $ranks[$section] = ($ranks[$section] ?? 0) + 1;
-
-            if (
-                $rank === (int) $row['rank_order']
-                && $section === (int) $row['plugin_glpisop_sections_id']
-            ) {
-                continue;
-            }
-
-            $DB->update(
-                self::getTable(),
-                ['rank_order' => $rank, 'plugin_glpisop_sections_id' => $section],
-                ['id' => (int) $row['id']]
-            );
-        }
-    }
-
     /** Next free rank within a section, so a new step lands at the bottom. */
     public static function nextRank(int $sops_id, int $sections_id): int
     {
@@ -331,28 +215,6 @@ class Step extends CommonDBChild
     }
 
     /**
-     * Steps that could serve as the gate for `$steps_id`.
-     *
-     * Only steps *earlier* in the order are offered. A cycle here would not
-     * merely be wrong, it would be unresolvable: two steps each waiting on the
-     * other are both permanently invisible and both permanently required.
-     *
-     * @return array<int,array<string,mixed>>
-     */
-    public static function candidateParents(int $sops_id, int $steps_id): array
-    {
-        $out = [];
-        foreach (self::allFor($sops_id, false) as $step) {
-            if ((int) $step['id'] === $steps_id) {
-                break;
-            }
-            $out[] = $step;
-        }
-
-        return $out;
-    }
-
-    /**
      * Any structural change to a step re-derives every run of its SOP.
      *
      * This is not housekeeping. Adding a required step to a published SOP, or
@@ -364,17 +226,19 @@ class Step extends CommonDBChild
      *
      * Deactivating a step is the same problem in the other direction: it drops
      * out of the procedure, and a run left counting it would never complete.
+     *
+     * Through {@see Sop::structureChanged()} rather than inline, so that a
+     * caller rewriting the whole procedure — the builder's save — can have the
+     * work done once at the end instead of once per row.
      */
     public function post_addItem()
     {
-        Sop::bumpVersion((int) $this->fields['plugin_glpisop_sops_id']);
-        Run::recountAllFor((int) $this->fields['plugin_glpisop_sops_id']);
+        Sop::structureChanged((int) $this->fields['plugin_glpisop_sops_id']);
     }
 
     public function post_updateItem($history = true)
     {
-        Sop::bumpVersion((int) $this->fields['plugin_glpisop_sops_id']);
-        Run::recountAllFor((int) $this->fields['plugin_glpisop_sops_id']);
+        Sop::structureChanged((int) $this->fields['plugin_glpisop_sops_id']);
     }
 
     /**
@@ -402,9 +266,7 @@ class Step extends CommonDBChild
             'depends_steps_id' => $steps_id,
         ]);
 
-        Sop::bumpVersion((int) $this->fields['plugin_glpisop_sops_id']);
-
         // Every run of this SOP now has a different notion of "complete".
-        Run::recountAllFor((int) $this->fields['plugin_glpisop_sops_id']);
+        Sop::structureChanged((int) $this->fields['plugin_glpisop_sops_id']);
     }
 }

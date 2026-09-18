@@ -35,7 +35,13 @@ use GlpiPlugin\Glpisop\SopBuilderTab;
 use GlpiPlugin\Glpisop\SopTriggerTab;
 use GlpiPlugin\Glpisop\TemplateTab;
 
-define('PLUGIN_GLPISOP_VERSION', '0.2.0');
+// Bumped for the procedure editor. No schema change goes with it — but this
+// constant is also what GLPI appends to the plugin's script and style URLs
+// (Plugin::getPluginFilesVersion()), so leaving it alone would serve every
+// technician the cached 0.2.0 sop.css. The editor's layout rules are in that
+// file, including the one that makes `hidden` win over Tabler's `display`, and
+// without them every step card renders permanently open.
+define('PLUGIN_GLPISOP_VERSION', '0.3.0');
 define('PLUGIN_GLPISOP_MIN_GLPI', '11.0');
 
 // Settings live under this config context.
@@ -80,7 +86,12 @@ function plugin_init_glpisop()
     // from the entry itself.
 
     // Assets are served from public/; paths are relative to the plugin root.
-    $PLUGIN_HOOKS['add_javascript']['glpisop'] = 'js/sop.js';
+    //
+    // The builder ships alongside the runtime rather than being loaded by the
+    // tab that needs it: GLPI renders plugin scripts in the page footer, and
+    // the Steps tab arrives over ajax afterwards. A script the tab asked for
+    // would land after the inline call that starts the editor.
+    $PLUGIN_HOOKS['add_javascript']['glpisop'] = ['js/sop.js', 'js/sop-builder.js'];
     $PLUGIN_HOOKS['add_css']['glpisop']        = 'css/sop.css';
 
     // Attach on create, and re-evaluate on update — a ticket recategorised from

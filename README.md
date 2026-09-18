@@ -32,9 +32,12 @@ Answer *No* and they appear in place with no reload, and the run reopens.
 
 ## Features
 
-- **Authoring** — sections and steps, per-step guidance, required flags, and a
-  gate of one or more conditions. Steps and headings reorder with arrows. Every
-  structural edit bumps the SOP's revision, and each run records the revision it
+- **Authoring on one canvas**, in the shape of GLPI 11's own form creator: a
+  column of cards, the step being edited open and the rest a line each, and one
+  *Save* for the whole procedure. Adding, deleting, duplicating, reordering,
+  retyping and branching a step are edits to the page — none of them is a page
+  load. A step's type options and its gate are in the card, not behind it.
+  Every save bumps the SOP's revision once, and each run records the revision it
   started against.
 - **Conditions** from three places, combined with all/any:
   - an **earlier answer** in this run — was answered, is, is not, is greater
@@ -96,8 +99,22 @@ installed.
 | Tab | What goes there |
 |---|---|
 | *SOP* | name, which itemtypes it applies to, whether it attaches itself, whether it blocks resolution |
-| *Steps* | sections and steps; open a step for its type options, required flag, or gate |
+| *Steps* | the procedure: headings, steps, their type options and their gates |
 | *Triggers* | the criteria under which it attaches itself, joined with AND or OR |
+
+The *Steps* tab is the editor. A step opens in place for its guidance, its type
+and that type's options, its required and active switches, and the conditions
+that gate it; clicking another step closes it again, so the shape of the whole
+procedure stays on screen while one step of it is being written. Steps move with
+the arrows or by dragging their handle, across headings as well as within them,
+and **Duplicate** copies a step whole — its options and its gate included, which
+is most of the work in a step worth repeating.
+
+Nothing is written until *Save*, which writes the lot: the bar says when there
+are unsaved changes and leaving the page asks first. A condition offers the
+steps *above* the one being gated, by the labels they have at that moment — so
+renaming a step renames it inside the branch that points at it, and a branch
+that would point forwards is not offered.
 
 ![The step builder](docs/screenshots/sop-06-builder.png)
 

@@ -55,63 +55,6 @@ class Section extends CommonDBChild
         return $out;
     }
 
-    /**
-     * Move a section one place up or down.
-     *
-     * Section order dominates step order — {@see Step::allFor()} sorts by it
-     * first — so without this an author who created their headings in the wrong
-     * order had no way to fix the shape of the procedure except by deleting a
-     * heading and refiling every step under it. The steps travel with the
-     * section, because that is what a heading means.
-     *
-     * Ranks are rewritten in full rather than swapped, so that sections seeded
-     * or imported with equal ranks come out of the first move with a strict
-     * order instead of a no-op.
-     */
-    public static function reorder(int $sections_id, string $direction): bool
-    {
-        /** @var \DBmysql $DB */
-        global $DB;
-
-        $section = new self();
-        if (!$section->getFromDB($sections_id)) {
-            return false;
-        }
-
-        $sops_id  = (int) $section->fields['plugin_glpisop_sops_id'];
-        $ordered  = array_values(self::allFor($sops_id));
-        $position = null;
-        foreach ($ordered as $index => $row) {
-            if ((int) $row['id'] === $sections_id) {
-                $position = $index;
-                break;
-            }
-        }
-
-        $target = $position === null
-            ? null
-            : ($direction === 'up' ? $position - 1 : $position + 1);
-
-        if ($target === null || !isset($ordered[$target])) {
-            return false;
-        }
-
-        $moved = $ordered[$position];
-        array_splice($ordered, $position, 1);
-        array_splice($ordered, $target, 0, [$moved]);
-
-        foreach ($ordered as $index => $row) {
-            $rank = $index + 1;
-            if ($rank !== (int) $row['rank_order']) {
-                $DB->update(self::getTable(), ['rank_order' => $rank], ['id' => (int) $row['id']]);
-            }
-        }
-
-        Sop::bumpVersion($sops_id);
-
-        return true;
-    }
-
     /** Next free rank, so a new section lands at the bottom. */
     public static function nextRank(int $sops_id): int
     {
@@ -149,6 +92,11 @@ class Section extends CommonDBChild
         Sop::bumpVersion((int) $this->fields['plugin_glpisop_sops_id']);
     }
 
+    /**
+     * A heading is presentation, so its own edits move nothing in a run — but
+     * they do change the order steps are read in, which is what the revision
+     * marks. No recount: the set of steps and which are required is untouched.
+     */
     public function post_addItem()
     {
         Sop::bumpVersion((int) $this->fields['plugin_glpisop_sops_id']);

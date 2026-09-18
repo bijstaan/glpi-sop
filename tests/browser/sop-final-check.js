@@ -16,37 +16,48 @@ const phpNoise = (html) =>
   await page.fill('#login_name','glpi'); await page.fill('input[type=password]','glpi');
   await page.click('button[type=submit]'); await page.waitForLoadState('networkidle');
 
-  // --- every step editor renders clean, for every type ---
-  const stepUrl = id => `${BASE}/plugins/glpisop/front/step.form.php?id=${id}`;
-  for (const id of [3,4,6,7,11]) {
-    await page.goto(stepUrl(id), {waitUntil:'networkidle'});
-    const html = await page.content();
-    check(`step ${id} editor renders clean`, !phpNoise(html) &&
-      await page.locator('.card', {hasText:'Ask this step only when'}).count() > 0);
-  }
+  // --- the editor renders every step type clean, in place ---
+  //
+  // Retyping a step fetches the panel that belongs to the new type. What is
+  // being checked is that each of those panels renders without PHP noise and
+  // brings its own controls — the old test did this by saving and reloading a
+  // page per type, which is exactly the round trip the editor removed.
+  const TAB = encodeURIComponent('GlpiPlugin\\Glpisop\\SopBuilderTab$1');
+  const canvas = `${BASE}/plugins/glpisop/front/sop.form.php?id=2&forcetab=${TAB}`;
 
-  // --- switch a step's type through each new one and back ---
-  await page.goto(stepUrl(11), {waitUntil:'networkidle'});
-  const original = await page.locator('select[name="step_type"]').inputValue();
-  for (const t of ['yesno','ticket']) {
-    await page.locator('select[name="step_type"]').selectOption(t);
-    await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}), page.click('button[name="update"]')]);
-    await page.goto(stepUrl(11), {waitUntil:'networkidle'});
-    const now = await page.locator('select[name="step_type"]').inputValue();
-    check(`step type saves as "${t}"`, now === t, now);
-    check(`"${t}" options card renders clean`, !phpNoise(await page.content()));
+  await page.goto(canvas, {waitUntil:'networkidle'});
+  await page.waitForSelector('[data-sop-builder][data-sop-ready="1"]');
+  await page.waitForTimeout(400);
+
+  const first = page.locator('[data-sop-blocks] [data-sop-step]').first();
+  await first.locator('[data-sop-field="label"]').click();
+  await page.waitForTimeout(200);
+
+  const typed = {
+    text: 'sopcfg_pattern',
+    number: 'sopcfg_min',
+    choice: 'sopcfg_options',
+    asset: 'sopcfg_itemtypes',
+    approval: 'sopcfg_require_status',
+    ticket: 'sopcfg_complete_on',
+  };
+
+  const original = await first.locator('[data-sop-field="type"]').inputValue();
+  for (const [type, control] of Object.entries(typed)) {
+    await first.locator('[data-sop-field="type"]').selectOption(type);
+    await page.waitForSelector(`[data-sop-step].sop-step--open [name="${control}"]`, {timeout:8000});
+    check(`"${type}" brings its own options in place`, true);
+    check(`"${type}" options render clean`, !phpNoise(await page.content()));
   }
-  // the ticket type's own options must be there
-  check('ticket step exposes its completion mode',
-        await page.locator('select[name="cfg_complete_on"]').count() === 1);
-  await page.locator('select[name="step_type"]').selectOption(original);
-  await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}), page.click('button[name="update"]')]);
-  await page.goto(stepUrl(11), {waitUntil:'networkidle'});
-  check('step type restored', await page.locator('select[name="step_type"]').inputValue() === original);
+  await first.locator('[data-sop-field="type"]').selectOption(original);
+  await page.waitForTimeout(500);
+
+  // Nothing above was saved; leaving is the discard, so dismiss the guard.
+  page.on('dialog', d => d.accept());
 
   // --- builder tab and the ticket the original run lives on ---
-  await page.goto(`${BASE}/plugins/glpisop/front/sop.form.php?id=2&forcetab=${encodeURIComponent('GlpiPlugin\\Glpisop\\SopBuilderTab$1')}`, {waitUntil:'networkidle'});
-  await page.waitForSelector('.sop-builder-steps');
+  await page.goto(canvas, {waitUntil:'networkidle'});
+  await page.waitForSelector('[data-sop-builder][data-sop-ready="1"]');
   check('builder tab renders clean', !phpNoise(await page.content()));
 
   await page.goto(`${BASE}/front/ticket.form.php?id=1095&forcetab=${encodeURIComponent('Ticket$main')}`, {waitUntil:'networkidle'});

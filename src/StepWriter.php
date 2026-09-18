@@ -7,7 +7,7 @@
 namespace GlpiPlugin\Glpisop;
 
 /**
- * Steps arriving from somewhere that is not the step form.
+ * Steps arriving from somewhere that is not the procedure editor.
  *
  * Two callers so far and they are further apart than they look: {@see Author}
  * drafts a whole procedure from resolved tickets, and {@see AiTools} lets a
@@ -40,8 +40,8 @@ final class StepWriter
      * model workflow, and proposing "wait for manager approval" from ticket
      * prose is proposing an organisational fact a model cannot see.
      * `document` asks for an upload, and `datetime` for a precision that
-     * prose never establishes. All four remain available in the step form,
-     * where a person is choosing them deliberately.
+     * prose never establishes. All four remain available in the editor, where a
+     * person is choosing them deliberately.
      *
      * @return array<string,string> type => when to use it, for the prompt
      */

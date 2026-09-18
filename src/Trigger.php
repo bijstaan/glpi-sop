@@ -308,7 +308,7 @@ class Trigger extends CommonDBChild
                 // row when the dropdown has nothing to offer — an instance with
                 // no categories, a group tree that is empty in this entity. So
                 // whoever consumes the value has to refuse 0 rather than assume
-                // one was picked; see front/condition.form.php.
+                // one was picked; see BuilderSave::clause().
                 \Dropdown::show(getItemTypeForTable((string) $definition['table']), [
                     'name'                => $name,
                     'value'               => (int) $value,

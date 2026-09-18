@@ -27,7 +27,7 @@ use GlpiPlugin\Glpiai\Tool;
  *
  * **Writing.** `sop_create`, `sop_add_steps`, `sop_update_step` and
  * `sop_update` let a technician dictate a procedure instead of filling in the
- * step form eleven times — "write this up as a procedure" after a nasty ticket
+ * editor eleven times — "write this up as a procedure" after a nasty ticket
  * is the moment procedures actually get written, and it is exactly the moment
  * nobody has twenty minutes for the builder.
  *
@@ -727,7 +727,7 @@ final class AiTools
             'changed'   => $changed,
             'note'      => 'The step type cannot be changed by a tool — a type change would '
                 . 'leave every answer already recorded in the old shape. Ask the technician to '
-                . 'do that in the step form if they need it.',
+                . 'do that in the editor if they need it.',
         ];
     }
 
