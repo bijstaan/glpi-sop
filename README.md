@@ -155,6 +155,10 @@ It will not:
   rather than failing the whole draft.
 - **Propose workflow.** `ticket` and `approval` steps are answered by somebody
   other than the technician.
+- **Invent a fork.** Where the tickets show the work forking the draft gates the
+  steps that only apply one way; where they do not, it does not guess. An
+  ungated step that did not always apply costs a question, and a gate on a
+  distinction nobody makes hides steps from the people who needed them.
 - **Draft from nothing.** A ticket carrying only a title contributes nothing and
   is unticked for you; below the configured minimum the button refuses.
 - **Publish.** Inactive, `is_autoattach` off, trigger inert until both are on.
@@ -172,28 +176,97 @@ Reading, always available:
 | `sop_library` | Which procedures exist for this kind of work, their steps, and what would make each attach |
 
 Writing, needing write tools enabled in glpiai *and* `plugin_glpisop_sop` at
-create or update:
+create, update or — for deletion alone — purge:
 
 | Tool | Does |
 |---|---|
-| `sop_create` | Writes a new procedure from what the technician dictates |
-| `sop_add_steps` | Appends steps under an existing heading or a new one |
-| `sop_update_step` | Rewords a step, changes whether it is required, or retires it |
+| `sop_create` | Writes a new procedure from what the technician dictates, any step type, branches included |
+| `sop_add_steps` | Adds steps at the end or after a named step, gated on what is already there |
+| `sop_update_step` | Rewords, retypes, reconfigures, moves, re-gates, retires or reinstates one step |
+| `sop_delete_step` | Removes a step and its answers for good — PURGE, and it asks first |
+| `sop_update_section` | Renames, describes, moves or removes a heading |
 | `sop_update` | Renames a procedure, rewrites its description, changes its itemtypes |
 
-Three rules hold across all four writers:
+Between them they do everything the builder does to a step: every one of the
+fourteen step types, the settings each type takes, the order, the headings, the
+gate, and deletion. What they do not share with the builder is its payload
+model — the canvas posts the procedure as it should now look and anything
+missing is deleted, which is safe in front of somebody who can see the canvas
+and is not safe from a model, because an answer that leaves a step out is a
+shorter answer rather than a decision. Every change here is named.
+
+Four rules hold across the writers:
 
 - **Nothing is activated.** A created procedure is inactive and attaches to
   nothing, and no tool can change either flag. Activation is what turns a
   document into something that can hold a queue's tickets open, and it is also
   the only accept signal a drafted procedure has.
-- **Nothing is deleted.** A step can be *retired*, keeping it and every answer
-  recorded against it, reversible in one click.
+- **Deleting is its own tool, and it asks first.** Retiring a step keeps it and
+  every answer recorded against it, reversibly, and is what nearly every "get
+  rid of that step" actually wants. `sop_delete_step` is the other thing: it
+  needs PURGE rather than UPDATE, and refuses a step that has been answered
+  until it is told the technician was shown the count. Changing a step's *type*
+  asks the same question for the same reason — the answers stay behind in the
+  old shape. Nothing deletes a procedure.
 - **A step type nobody implements is dropped and said so.** One definition in
-  `StepWriter`, shared with the drafting prompt. `ticket` and `approval` are
-  never offered.
+  `StepWriter`. Drafting from tickets uses the shorter list: `ticket`,
+  `approval`, `document` and `datetime` are absent there, because a procedure
+  proposed from a sample of tickets should not be inventing an approval step or
+  handing another team work. A technician dictating one can write all fourteen.
+- **A gate that could never hold is dropped and said so.** A branch waiting for
+  an option its question does not offer, or for "yes" from a checkbox, saves
+  cleanly and never opens — which in a run looks exactly like a procedure with
+  no branch there. Dropping it means the step is asked every time, a spare
+  question rather than a missing one, and the technician is told which.
 
-The four writers are not declared on every request: past glpiai's tool-search
+### Branches
+
+A written step carries the same gate the builder writes: `ask_when`, a list of
+clauses joined by `ask_when_mode` (`all` or `any`). It is what keeps "if
+applicable" out of the labels — the person following a procedure is the one who
+does not know whether it applies.
+
+A clause names its subject the way the canvas does, `source:target`:
+
+| Subject | Means |
+|---|---|
+| `step:q1` or `step:412` | An answer given earlier — a `ref` written in this call, or a step id from `sop_library` |
+| `field:itilcategories_id` | Something about the ticket: category, type, urgency, impact, priority, request source, location, entity, requester group, assigned group, title, description |
+| `approval:global_validation` | The approvals on it — the status, or who granted it |
+
+Steps are named by `ref`, a short id the model gives them, and not by position.
+Position is a reference into a list this code is allowed to drop steps out of,
+so one unusable step three rows up would re-point a gate at the wrong question —
+the single failure here that produces a procedure which looks right and asks the
+wrong things. An unresolvable ref is dropped and reported instead.
+
+**Values are names, not ids.** `field:itilcategories_id under "Hardware"`, not
+`under 7`. A guessed id is not detectably wrong — it saves, and gates a step on
+a category nobody meant until somebody re-reads the procedure — so `Lookup`
+resolves the name against the table the criterion belongs to, under the
+session's own entity restriction, and reports a name that matches nothing or
+matches two things rather than picking one. The same goes for the settings that
+are records: a ticket step's category and assigned group, an approval step's
+approver.
+
+`GateWriter` refuses a clause that could never hold rather than storing it. The
+builder cannot produce one — it offers the parent's own options and the criteria
+this procedure's itemtypes actually have — which is why this has no counterpart
+in `BuilderSave`, and it is the whole value of the class.
+
+### Settings
+
+A step type's own settings arrive as key/value pairs and go through
+`StepOptions::collect()`, the same function the builder's save runs through, so
+a step written by a model and a step saved from the canvas hold the same config
+for the same type. Pairs rather than a property per setting because sixteen
+settings across seven types would be sixteen keys on every step, and two of the
+three provider dialects require every declared property on every object.
+
+`tests/steps.php` covers the parts of this that need no database — 92 checks:
+`php tests/steps.php` from the plugin directory.
+
+The writers are not declared on every request: past glpiai's tool-search
 threshold only pinned tools go to the model up front, and these carry this
 plugin's largest schemas for a rare turn. The two readers stay pinned, so the
 model always knows the site has procedures. `find_tools` ranks `sop_create`

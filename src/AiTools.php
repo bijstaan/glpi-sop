@@ -18,21 +18,42 @@ use GlpiPlugin\Glpiai\Tool;
  * actual procedure has a step about the shared mailbox that the generic list
  * has never heard of and that is the one somebody always forgets.
  *
- * Six tools, in two halves.
+ * Eight tools, in two halves.
  *
  * **Reading.** `sop_progress` reads the checklist running on an item — what is
  * done, what was skipped and what is still outstanding — and `sop_library`
  * reads the procedures themselves, for the case where nothing is attached yet
  * and the question is "is there a procedure for this at all".
  *
- * **Writing.** `sop_create`, `sop_add_steps`, `sop_update_step` and
- * `sop_update` let a technician dictate a procedure instead of filling in the
- * editor eleven times — "write this up as a procedure" after a nasty ticket
- * is the moment procedures actually get written, and it is exactly the moment
- * nobody has twenty minutes for the builder.
+ * **Writing.** `sop_create`, `sop_add_steps`, `sop_update_step`,
+ * `sop_delete_step`, `sop_update_section` and `sop_update` let a technician
+ * dictate a procedure instead of filling in the editor eleven times — "write
+ * this up as a procedure" after a nasty ticket is the moment procedures
+ * actually get written, and it is exactly the moment nobody has twenty minutes
+ * for the builder.
  *
- * Three rules hold across all four, and they are the same three that hold for
- * a procedure drafted from tickets:
+ * Between them they do everything the builder does to a step: write it with any
+ * type and the settings that type takes, reword it, retype it, move it between
+ * headings and up and down the order, gate it, retire it, delete it, and rename
+ * or remove the headings themselves. The one thing they deliberately do *not*
+ * share with the builder is its payload model. The canvas posts the procedure
+ * as it should now look and anything missing from it is deleted, which is safe
+ * in front of somebody who can see the canvas and is not safe here: a model
+ * that leaves a step out of an answer has written a shorter answer, not decided
+ * to remove it. So every change here is named.
+ *
+ * A written procedure branches. A step carries a gate naming an earlier step
+ * and the answer it waits for, so "if the mailbox is shared, hand it over"
+ * becomes a question and a step that appears when it is answered one way —
+ * rather than a label with "if applicable" in it, which asks the person
+ * following the procedure to make the judgement it exists to save them.
+ * {@see StepWriter} owns that, and holds it to one {@see Condition} source:
+ * an earlier answer in the same procedure. Gates on the ticket's own fields or
+ * its approvals are written in ids a model does not know, and stay in the
+ * builder where there is a picker.
+ *
+ * Four rules hold across all four writers, and the first three are the ones
+ * that hold for a procedure drafted from tickets:
  *
  *  - **Nothing is switched on.** A created procedure is inactive and does not
  *    attach itself, and no tool can change either flag. Somebody switching it
@@ -40,12 +61,20 @@ use GlpiPlugin\Glpiai\Tool;
  *    would erase the one measurement there is. `is_active` is also the whole
  *    of the blast radius: an inactive procedure is a document, an active
  *    enforcing one can hold a queue's tickets open.
- *  - **Nothing is deleted.** A step can be deactivated, which is reversible
- *    and visible in the builder; there is no tool that removes a step, a
- *    section or a procedure. Deleting a step takes its answers with it, on
- *    every run that ever recorded one.
+ *  - **Deleting is its own tool, and it asks first.** Retiring a step keeps it
+ *    and every answer recorded against it, reversibly, and is what nearly every
+ *    "get rid of that step" actually wants; `sop_delete_step` is the other
+ *    thing, needs PURGE rather than UPDATE, and refuses a step that has been
+ *    answered until it is told the technician was shown the count. Changing a
+ *    step's *type* asks the same question for the same reason: the answers stay
+ *    behind in the old shape. There is still no tool that deletes a procedure.
  *  - **The steps go through {@see StepWriter}**, so a type nobody implements
  *    costs one dropped step and a note, exactly as it does in drafting.
+ *  - **A gate that cannot hold is dropped, not stored.** A branch waiting on
+ *    an option the parent step does not offer would save cleanly and never
+ *    open, which is indistinguishable from a procedure that has no branch.
+ *    Dropped means the step is asked unconditionally — a spare question rather
+ *    than a missing one — and the technician is told.
  *
  * **Permissions.** The tools are gated differently on purpose, mirroring the
  * plugin's own split: reading a run needs `plugin_glpisop_run`, reading the
@@ -112,6 +141,8 @@ final class AiTools
             self::create(),
             self::addSteps(),
             self::updateStep(),
+            self::deleteStep(),
+            self::updateSection(),
             self::update(),
         ];
     }
@@ -347,14 +378,8 @@ final class AiTools
             ];
 
             if ($steps) {
-                $entry['steps'] = array_map(
-                    static fn(array $s): array => [
-                        'label'    => (string) $s['label'],
-                        'required' => (bool) $s['is_required'],
-                        'help'     => self::text($s['help'] ?? ''),
-                    ],
-                    Step::allFor((int) $sop['id'])
-                );
+                $entry['headings'] = self::headings((int) $sop['id']);
+                $entry['steps']    = self::steps((int) $sop['id']);
             }
 
             $out[] = $entry;
@@ -371,6 +396,83 @@ final class AiTools
                 : 'These are the site\'s own procedures. Prefer their wording to a general one — '
                   . 'the steps that look unnecessary are usually the site-specific ones.',
         ];
+    }
+
+    /**
+     * A procedure's steps, as the writers need to be able to name them.
+     *
+     * The id is the load-bearing part and used to be missing, which made
+     * `sop_update_step` unreachable — its own description says to get the id
+     * from here — and made `sop_add_steps` unable to hang a branch off a step
+     * that already existed. A label is not an identifier: two procedures can
+     * word a step the same way, and one procedure can word two steps the same
+     * way.
+     *
+     * `asked_when` is included only where there is a gate, and reads as the
+     * builder's own sentence. A model that cannot see the existing branching
+     * writes a second copy of it.
+     *
+     * The clause descriptions name their step as `#id` rather than by position.
+     * {@see Condition::describe()} takes display numbers for the builder, whose
+     * left column shows "3a" — but here the ids are in the payload beside the
+     * description, and "step 3" next to a step whose id is 7 is an invitation
+     * to gate the next branch on the wrong one.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private static function steps(int $sops_id): array
+    {
+        $headings = Section::allFor($sops_id);
+
+        $out = [];
+        foreach (Step::allFor($sops_id) as $row) {
+            $sections_id = (int) $row['plugin_glpisop_sections_id'];
+
+            $step = [
+                'id'       => (int) $row['id'],
+                'label'    => (string) $row['label'],
+                'type'     => (string) $row['step_type'],
+                'required' => (bool) $row['is_required'],
+                'help'     => self::text($row['help'] ?? ''),
+                'heading'  => (string) ($headings[$sections_id]['name'] ?? ''),
+            ];
+
+            $config = Step::config($row);
+            if (StepType::isChoice((string) $row['step_type'])) {
+                $step['options'] = array_values(array_map('strval', (array) ($config['options'] ?? [])));
+            }
+
+            $gate = Condition::describeAll(Step::conditions($row), Step::mode($row));
+
+            if ($gate !== '') {
+                $step['asked_when'] = $gate;
+            }
+
+            $out[] = $step;
+        }
+
+        return $out;
+    }
+
+    /**
+     * A procedure's headings, so they can be renamed and reordered by id.
+     *
+     * The unfiled group is not one of these and never has been — it is section
+     * 0, where steps that were never filed live, and there is nothing to rename.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private static function headings(int $sops_id): array
+    {
+        $out = [];
+        foreach (Section::allFor($sops_id) as $sections_id => $section) {
+            $out[] = [
+                'id'   => (int) $sections_id,
+                'name' => (string) $section['name'],
+            ];
+        }
+
+        return $out;
     }
 
     /**
@@ -413,7 +515,10 @@ final class AiTools
                 . 'Reach for this when somebody asks for a procedure, a checklist or a runbook '
                 . 'to be written down, or says "next time, we should always...". Check '
                 . 'sop_library first: adding steps to the procedure that already covers this is '
-                . 'better than a second one beside it. ' . self::INACTIVE_NOTE,
+                . 'better than a second one beside it. Steps can branch: ask the deciding '
+                . 'question as its own step, give it a ref, and gate the steps that follow from '
+                . 'it with ask_when, so that whoever runs this is asked only what applies to '
+                . 'them. ' . self::INACTIVE_NOTE,
             schema: [
                 'type'       => 'object',
                 'properties' => [
@@ -520,7 +625,12 @@ final class AiTools
             return ['error' => 'The procedure could not be created.'];
         }
 
-        $written = StepWriter::write($sops_id, $steps);
+        // Re-read rather than trust what add() left behind: the steps about to
+        // be written ask the SOP what it runs on, and that is a column
+        // prepareInputForAdd() rewrote on the way past.
+        $sop->getFromDB($sops_id);
+
+        $result = StepWriter::write($sop, $steps, $notes);
 
         $categories_id = (int) ($arguments['itilcategories_id'] ?? 0);
         if ($categories_id > 0) {
@@ -534,12 +644,18 @@ final class AiTools
 
         return [
             'created'   => self::reference($sops_id, $name),
-            'steps'     => count($written),
+            'steps'     => count($result['steps']),
+            'branches'  => $result['gates'],
             'is_active' => false,
             'notes'     => $notes,
             'note'      => 'Created and switched off. It attaches to nothing and blocks nothing '
                 . 'until somebody opens it, reads the steps and activates it. Give the '
-                . 'technician the link.',
+                . 'technician the link.'
+                . ($notes === []
+                    ? ''
+                    : ' Some of what was asked for could not be written exactly — the notes say '
+                      . 'what, and a dropped branch means that step is now asked every time. '
+                      . 'Tell the technician rather than summarising it as done.'),
         ];
     }
 
@@ -553,13 +669,21 @@ final class AiTools
                 . 'sop_create when the site already has a procedure for this kind of work and '
                 . 'what is missing is a step or two — a check nobody had written down, the thing '
                 . 'that went wrong this time. Steps are added at the end of their heading; '
-                . 'nothing existing is changed or removed.',
+                . 'nothing existing is changed or removed. New steps can branch off the '
+                . 'procedure as it stands: an ask_when clause may name a step already in it by '
+                . 'the numeric id sop_library gives, as well as a ref written in this call.',
             schema: [
                 'type'       => 'object',
                 'properties' => [
                     'sops_id' => [
                         'type'        => 'integer',
                         'description' => 'The procedure to add to, as returned by sop_library.',
+                    ],
+                    'after_step' => [
+                        'type'        => 'integer',
+                        'description' => 'Optional. Put the new steps directly after this step of '
+                            . 'the procedure, under its heading, instead of at the end. Omit to '
+                            . 'append.',
                     ],
                     'steps'   => StepWriter::schema(),
                 ],
@@ -593,11 +717,17 @@ final class AiTools
             return ['error' => 'No usable steps were given, so nothing was added.', 'notes' => $notes];
         }
 
-        $written = StepWriter::write((int) $sop->getID(), $steps);
+        $result = StepWriter::write($sop, $steps, $notes);
+
+        $after = (int) ($arguments['after_step'] ?? 0);
+        if ($after > 0 && $result['steps'] !== []) {
+            StepEditor::placeAfter($sop, $result['steps'], $after, $notes);
+        }
 
         return [
             'procedure' => self::reference((int) $sop->getID(), (string) $sop->fields['name']),
-            'added'     => count($written),
+            'added'     => count($result['steps']),
+            'branches'  => $result['gates'],
             'is_active' => (bool) $sop->fields['is_active'],
             'notes'     => $notes,
             'note'      => (bool) $sop->fields['is_active']
@@ -617,17 +747,19 @@ final class AiTools
         return new Tool(
             name: 'sop_update_step',
             description: 'Change one step of a procedure: its wording, its guidance, whether it '
-                . 'is required, or whether it is used at all. Use it to fix a step that asks for '
-                . 'the wrong thing, or to retire one that no longer applies — deactivating keeps '
-                . 'the step and the answers already recorded against it, which deleting would '
-                . 'not. There is no tool that deletes a step; say so if asked.',
+                . 'is required, what type it is and the settings that go with the type, which '
+                . 'heading it sits under, where in the order it comes, what it waits for before '
+                . 'it is asked, or whether it is used at all. Everything is optional and '
+                . 'anything not given is left exactly as it was. Retiring a step with is_active '
+                . '"no" keeps it and every answer already recorded against it, which deleting '
+                . 'would not — prefer it. sop_library gives the step ids.',
             schema: [
                 'type'       => 'object',
                 'properties' => [
                     'steps_id'  => [
                         'type'        => 'integer',
                         'description' => 'The step to change. sop_library returns a procedure\'s '
-                            . 'steps with their ids.',
+                            . 'step ids.',
                     ],
                     'label'     => [
                         'type'        => 'string',
@@ -646,7 +778,48 @@ final class AiTools
                         'type'        => 'string',
                         'enum'        => ['yes', 'no'],
                         'description' => '"no" retires the step: it stops being part of the '
-                            . 'procedure but keeps its history. Omit to leave it alone.',
+                            . 'procedure and keeps every answer already recorded against it, '
+                            . 'reversibly. Omit to leave it alone.',
+                    ],
+                    'type'      => [
+                        'type'        => 'string',
+                        'enum'        => array_keys(StepWriter::types()),
+                        'description' => 'A different type for the step. Every answer already '
+                            . 'recorded stays in the old shape, so this needs confirm_answers '
+                            . 'when the step has any. Omit to leave it alone.',
+                    ],
+                    'options'   => [
+                        'type'        => 'array',
+                        'items'       => ['type' => 'string'],
+                        'description' => 'The choices, for a choice or multichoice step. Omit to '
+                            . 'leave them alone; giving them replaces the list.',
+                    ],
+                    'config'    => StepWriter::configSchema(),
+                    'section'   => [
+                        'type'        => 'string',
+                        'description' => 'The heading this step sits under, by name; one that '
+                            . 'does not exist yet is created. Empty string files it under no '
+                            . 'heading. Omit to leave it alone.',
+                    ],
+                    'after_step' => [
+                        'type'        => 'string',
+                        'description' => 'Move the step: the id of the step it should come '
+                            . 'directly after, or "first". It follows that step under its '
+                            . 'heading. Omit to leave the order alone.',
+                    ],
+                    'ask_when'      => GateWriter::schema(),
+                    'ask_when_mode' => [
+                        'type'        => 'string',
+                        'enum'        => [Condition::MODE_ALL, Condition::MODE_ANY],
+                        'description' => 'Whether every clause of ask_when has to hold, or any '
+                            . 'one of them.',
+                    ],
+                    'confirm_answers' => [
+                        'type'        => 'string',
+                        'enum'        => ['yes', 'no'],
+                        'description' => 'Only for a type change on a step that has been answered '
+                            . 'on live runs. "yes" means the technician has been told those '
+                            . 'answers will be left in the old shape and wants it anyway.',
                     ],
                 ],
                 'required'   => ['steps_id'],
@@ -668,9 +841,9 @@ final class AiTools
      */
     public static function runUpdateStep(array $arguments = [], mixed $context = null): array
     {
+        $step     = new Step();
         $steps_id = (int) ($arguments['steps_id'] ?? 0);
 
-        $step = new Step();
         if ($steps_id <= 0 || !$step->getFromDB($steps_id)) {
             return ['error' => sprintf('There is no step %d.', $steps_id)];
         }
@@ -682,52 +855,219 @@ final class AiTools
             return ['error' => $sop];
         }
 
-        $input   = ['id' => $steps_id];
-        $changed = [];
+        $notes  = [];
+        $result = StepEditor::apply($sop, $step, $arguments, $notes);
 
-        $label = trim((string) ($arguments['label'] ?? ''));
-        if ($label !== '') {
-            $input['label'] = mb_substr($label, 0, 250);
-            $changed[]      = 'label';
+        if ($result['error'] !== '') {
+            return ['error' => $result['error'], 'notes' => $notes];
         }
 
-        if (array_key_exists('help', $arguments)) {
-            $input['help'] = mb_substr(trim((string) $arguments['help']), 0, 1000);
-            $changed[]     = 'help';
+        $out = [
+            'procedure' => self::reference((int) $sop->getID(), (string) $sop->fields['name']),
+            'step'      => (string) $step->fields['label'],
+            'changed'   => $result['changed'],
+            'notes'     => $notes,
+        ];
+
+        if (in_array('gate', $result['changed'], true)
+            || in_array('gate cleared', $result['changed'], true)
+        ) {
+            $out['conditions'] = $result['gates'];
         }
 
-        $required = StepWriter::yes($arguments['required'] ?? null);
-        if ($required !== null) {
-            $input['is_required'] = $required ? 1 : 0;
-            $changed[]            = 'required';
+        // Said every time the step has been answered, not only when something
+        // about it was destructive. A step reworded on a procedure that is
+        // running has changed the question under people who already answered
+        // the old one, and that is worth a sentence to the technician.
+        if ($result['answers'] > 0) {
+            $out['answered_on_runs'] = $result['answers'];
+            $out['note'] = sprintf(
+                'This step has been answered on %d run%s already. Those answers are untouched, '
+                . 'and where the wording or the type changed they now sit under a question that '
+                . 'reads differently. Say so.',
+                $result['answers'],
+                $result['answers'] === 1 ? '' : 's'
+            );
         }
 
-        $active = StepWriter::yes($arguments['is_active'] ?? null);
-        if ($active !== null) {
-            $input['is_active'] = $active ? 1 : 0;
-            $changed[]          = $active ? 'reinstated' : 'retired';
+        return $out;
+    }
+
+    // ----------------------------------------------------------- delete step
+
+    private static function deleteStep(): Tool
+    {
+        return new Tool(
+            name: 'sop_delete_step',
+            description: 'Remove a step from a procedure for good, together with every answer '
+                . 'recorded against it on every run, and every branch elsewhere that waited on '
+                . 'it. This cannot be undone. Retiring the step instead — sop_update_step with '
+                . 'is_active "no" — takes it out of the procedure and keeps the history, and is '
+                . 'what almost every request for a step to "go away" actually wants; reach for '
+                . 'this one only when somebody has asked for the step and its answers to be '
+                . 'gone. It refuses on a step that has been answered unless confirm says the '
+                . 'technician was told what would be lost.',
+            schema: [
+                'type'       => 'object',
+                'properties' => [
+                    'steps_id' => [
+                        'type'        => 'integer',
+                        'description' => 'The step to delete, as returned by sop_library.',
+                    ],
+                    'confirm'  => [
+                        'type'        => 'string',
+                        'enum'        => ['yes', 'no'],
+                        'description' => '"yes" means the technician has been told how many '
+                            . 'recorded answers this destroys and has said to go ahead. Send it '
+                            . 'only after they have.',
+                    ],
+                ],
+                'required'   => ['steps_id'],
+            ],
+            handler: [self::class, 'runDeleteStep'],
+            right: 'plugin_glpisop_sop',
+            mutates: true,
+            // PURGE, not UPDATE. Deleting a step is not a stronger edit: it
+            // destroys evidence on closed tickets, and the profile that may
+            // rewrite a procedure is not automatically the one that may do
+            // that.
+            right_level: PURGE,
+            source: 'glpisop',
+            pinned: false
+        );
+    }
+
+    /**
+     * @param array<string,mixed> $arguments
+     * @return array<string,mixed>
+     */
+    public static function runDeleteStep(array $arguments = [], mixed $context = null): array
+    {
+        $step     = new Step();
+        $steps_id = (int) ($arguments['steps_id'] ?? 0);
+
+        if ($steps_id <= 0 || !$step->getFromDB($steps_id)) {
+            return ['error' => sprintf('There is no step %d.', $steps_id)];
         }
 
-        if ($changed === []) {
-            return ['error' => 'Nothing was asked for, so nothing changed.'];
+        $sop = self::writable((int) $step->fields['plugin_glpisop_sops_id']);
+        if (is_string($sop)) {
+            return ['error' => $sop];
         }
 
-        // The step type is deliberately not changeable here. Changing it
-        // rewrites what an answer means, and every answer already recorded
-        // against the step stays behind in the old shape — a yes/no step turned
-        // into a number leaves "yes" where a number should be, on every run
-        // that ever answered it.
-        if (!$step->update($input)) {
-            return ['error' => 'That step could not be changed.'];
+        $label   = (string) $step->fields['label'];
+        $answers = StepEditor::answers($steps_id);
+
+        if ($answers > 0 && StepWriter::yes($arguments['confirm'] ?? null) !== true) {
+            return [
+                'error' => sprintf(
+                    'Not deleted. “%s” has %d recorded answer%s, on runs including ones that are '
+                    . 'closed, and deleting it destroys them. Tell the technician that, offer to '
+                    . 'retire it instead — which keeps the history — and call this again with '
+                    . 'confirm "yes" only if they still want it gone.',
+                    $label,
+                    $answers,
+                    $answers === 1 ? '' : 's'
+                ),
+                'answers' => $answers,
+            ];
+        }
+
+        $result = StepEditor::delete($step);
+
+        if (!$result['deleted']) {
+            return ['error' => 'That step could not be deleted.'];
+        }
+
+        return [
+            'procedure'        => self::reference((int) $sop->getID(), (string) $sop->fields['name']),
+            'deleted'          => $label,
+            'answers_lost'     => $result['answers'],
+            'branches_dropped' => $result['gates'],
+            'note'             => 'Gone, with everything recorded against it. Say how many '
+                . 'answers that was, and say that any step which waited on this one is now '
+                . 'asked every time.',
+        ];
+    }
+
+    // -------------------------------------------------------------- headings
+
+    private static function updateSection(): Tool
+    {
+        return new Tool(
+            name: 'sop_update_section',
+            description: 'Rename a heading in a procedure, give it a description, move it, or '
+                . 'remove it. Removing a heading keeps its steps — they go back to the unfiled '
+                . 'group at the end of the procedure — so it loses nothing but the name. '
+                . 'sop_library returns the headings and their ids. New headings do not need this: '
+                . 'naming one on a step creates it.',
+            schema: [
+                'type'       => 'object',
+                'properties' => [
+                    'sections_id'   => [
+                        'type'        => 'integer',
+                        'description' => 'The heading to change, as returned by sop_library.',
+                    ],
+                    'name'          => [
+                        'type'        => 'string',
+                        'description' => 'New name for the heading. Omit to leave it alone.',
+                    ],
+                    'description'   => [
+                        'type'        => 'string',
+                        'description' => 'A sentence shown under the heading. Omit to leave it '
+                            . 'alone.',
+                    ],
+                    'after_section' => [
+                        'type'        => 'string',
+                        'description' => 'Move it: the id of the heading it should come after, or '
+                            . '"first". Omit to leave the order alone.',
+                    ],
+                    'remove'        => [
+                        'type'        => 'string',
+                        'enum'        => ['yes', 'no'],
+                        'description' => '"yes" removes the heading and unfiles its steps.',
+                    ],
+                ],
+                'required'   => ['sections_id'],
+            ],
+            handler: [self::class, 'runUpdateSection'],
+            right: 'plugin_glpisop_sop',
+            mutates: true,
+            right_level: UPDATE,
+            source: 'glpisop',
+            pinned: false
+        );
+    }
+
+    /**
+     * @param array<string,mixed> $arguments
+     * @return array<string,mixed>
+     */
+    public static function runUpdateSection(array $arguments = [], mixed $context = null): array
+    {
+        $section     = new Section();
+        $sections_id = (int) ($arguments['sections_id'] ?? 0);
+
+        if ($sections_id <= 0 || !$section->getFromDB($sections_id)) {
+            return ['error' => sprintf('There is no heading %d.', $sections_id)];
+        }
+
+        $sop = self::writable((int) $section->fields['plugin_glpisop_sops_id']);
+        if (is_string($sop)) {
+            return ['error' => $sop];
+        }
+
+        $was    = (string) $section->fields['name'];
+        $result = StepEditor::section($sop, $section, $arguments);
+
+        if ($result['error'] !== '') {
+            return ['error' => $result['error']];
         }
 
         return [
             'procedure' => self::reference((int) $sop->getID(), (string) $sop->fields['name']),
-            'step'      => (string) ($input['label'] ?? $step->fields['label']),
-            'changed'   => $changed,
-            'note'      => 'The step type cannot be changed by a tool — a type change would '
-                . 'leave every answer already recorded in the old shape. Ask the technician to '
-                . 'do that in the editor if they need it.',
+            'heading'   => $was,
+            'changed'   => $result['changed'],
         ];
     }
 

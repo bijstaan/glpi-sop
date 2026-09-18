@@ -72,11 +72,17 @@ final class Author
      * tools do it too, and the list a model is offered has to be the same list
      * its answer is checked against wherever that happens.
      *
+     * The *shorter* list, and the difference is the caller rather than the
+     * types. A technician dictating a procedure is in the room saying "and then
+     * Karen approves it"; a draft is proposing a procedure nobody asked for
+     * from a sample of tickets, and an approval step invented from that is an
+     * organisational claim the tickets cannot support.
+     *
      * @return array<string,string>
      */
     public static function types(): array
     {
-        return StepWriter::types();
+        return StepWriter::draftable();
     }
 
     // ------------------------------------------------------------ readiness
@@ -399,6 +405,18 @@ final class Author
             '  - Mark a step required only where skipping it would make the rest unreliable.',
             '  - Use sections only if the work genuinely falls into phases. Fewer than about six',
             '    steps never needs them. Leave the section empty on every step if not.',
+            '  - Where the tickets show the work forking — some of them did a thing and the rest',
+            '    did not — write the fork rather than a step that says "if applicable". Ask what',
+            '    decides it as its own yesno or choice step, give that step a ref, and set',
+            '    ask_when on each step that only applies one way. A checkbox cannot carry a',
+            '    negative answer, so the deciding step is never a check.',
+            '  - Do not invent a fork the tickets do not show. An ungated step that did not',
+            '    always apply costs a question; a gate on a distinction nobody actually makes',
+            '    hides steps from people who needed them.',
+            '  - A gate may only name a step above it, by its ref. Write "step:<ref>" as the',
+            '    subject. Do not gate a drafted step on the ticket\'s own fields: the procedure',
+            '    is about to be given a trigger for the category these tickets came from, and a',
+            '    second copy of that rule inside it is a step nobody can explain later.',
             '  - Take out anything that belongs to one occurrence: an entity, their people, a',
             '    hostname, a ticket number. This procedure will be run on other tickets.',
             '  - If these tickets are not variations of one problem, set usable to "no" and say',
@@ -410,7 +428,10 @@ final class Author
             '    publishing.',
             '',
             'Step types, and when each is right:',
-        ], [StepWriter::typeGuide()]));
+        ], [StepWriter::typeGuide(self::types())], [
+            '',
+            'How a gate compares an earlier answer:',
+        ], [GateWriter::stepGuide()]));
     }
 
     private static function userText(string $category, string $evidence): string
@@ -450,7 +471,7 @@ final class Author
                     'type'        => 'string',
                     'description' => 'One or two sentences: when a technician should follow this.',
                 ],
-                'steps'   => StepWriter::schema(),
+                'steps'   => StepWriter::schema(self::types()),
                 'gaps'    => [
                     'type'        => 'string',
                     'description' => 'What these tickets did not establish. Empty if nothing.',
@@ -484,7 +505,7 @@ final class Author
         \GlpiPlugin\Glpiai\Completion $completion
     ): array {
         $notes = [];
-        $steps = StepWriter::validate((array) ($data['steps'] ?? []), $notes);
+        $steps = StepWriter::validate((array) ($data['steps'] ?? []), $notes, self::types());
 
         if ($steps === []) {
             return [
@@ -542,7 +563,16 @@ final class Author
             ];
         }
 
-        StepWriter::write($sops_id, $steps);
+        // Re-read rather than trust what add() left behind: the steps about to
+        // be written ask the SOP what it runs on, and that is a column
+        // prepareInputForAdd() rewrote on the way past.
+        $sop->getFromDB($sops_id);
+
+        // Notes from the write itself — a gate that could not be made to hold
+        // — join the ones validation collected. Both are shown to the author
+        // before they publish, and a branch that quietly became unconditional
+        // is exactly the kind of difference a reader would not spot.
+        StepWriter::write($sop, $steps, $notes);
 
         // The trigger the cluster key already is. It cannot fire — the SOP is
         // inactive and does not auto-attach — but writing it means the author
