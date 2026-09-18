@@ -664,8 +664,32 @@
     cursor: grab;
 }
 
+/* What is being moved, left in place at the weight of a shadow: the author
+   needs to see the card they picked up and the slot it is going into at the
+   same time, and a list that has already closed the gap behind it cannot show
+   both. */
 .sop-builder .sop-dragging {
-    opacity: .4;
+    opacity: .35;
+}
+
+/*
+ * Where it would land. Parked between two cards by place(), and the only thing
+ * that moves while a drag is in flight.
+ *
+ * A real 2px box rather than a zero-height outline, so that inserting it opens
+ * a visible slot the width of the list — the gesture reads as "this goes here"
+ * rather than as a line drawn over the page. It carries no data attribute the
+ * serialiser looks for, so it can sit inside a steps list without being a step.
+ */
+.sop-builder .sop-drop-marker {
+    height: 2px;
+    border-radius: 2px;
+    background: var(--tblr-blue, #206bc4);
+    pointer-events: none;
+}
+
+.sop-builder .sop-drop-marker--section {
+    height: 3px;
 }
 
 /* Never squeezed: the chips are a fixed reading of the step, and a chip list

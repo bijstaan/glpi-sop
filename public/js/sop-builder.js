@@ -273,9 +273,9 @@
         root.addEventListener('input', onInput);
         root.addEventListener('change', onChange);
 
+        // dragover and drop are bound on the document instead, and only for
+        // the length of a drag — see the drag section.
         root.addEventListener('dragstart', onDragStart);
-        root.addEventListener('dragover', onDragOver);
-        root.addEventListener('drop', onDrop);
         root.addEventListener('dragend', onDragEnd);
 
         // Once per page, not once per canvas: a tab switched away from and back
@@ -1324,8 +1324,92 @@
     }
 
     // ---------------------------------------------------------------- drag
+    //
+    // Dragging shows where the block will land while it is being dragged, and
+    // reaches a place that is not on screen when it starts. Neither was true
+    // of the first version, and both are the difference between a list you can
+    // reorder and a list you can reorder if it is short.
+    //
+    // ## The insertion marker, and why nothing moves until the drop
+    //
+    // A 2px rule is parked between the two cards the block would land between,
+    // and *that* is what follows the pointer. The block being dragged stays
+    // where it is, faded, so the author can see what they picked up and where
+    // it is going at the same time. The alternative — re-parenting the real
+    // card on every dragover, the way most sortables do — reads no better and
+    // has to be right every frame rather than once.
+    //
+    // The marker is removed before every measurement and re-inserted after,
+    // which is not defensiveness: it is 2px tall inside a flex column with a
+    // gap, so leaving it in the measured layout moves every card below it and
+    // a pointer sitting on a midpoint would flip the marker between two slots
+    // forever. Measuring the layout without it is measuring one fixed thing.
+    //
+    // ## Reaching what is off screen
+    //
+    // The browser will not scroll for us. Chrome's own drag autoscroll only
+    // runs while the pointer is over something that has accepted the drag, and
+    // the bottom of the window during a long procedure is the page, not this
+    // canvas — so the drag stalled at the fold with the rest of the procedure
+    // unreachable. Hence two things: the dragover/drop listeners go on the
+    // *document* for the duration of the drag (so the pointer leaving the
+    // canvas does not end the conversation), and a requestAnimationFrame loop
+    // scrolls the window while the pointer is within DRAG_EDGE of either edge.
+    // The loop runs on its own clock rather than off dragover, because a
+    // pointer held still at the bottom of the screen fires no events and is
+    // exactly the gesture that means "keep going".
+    //
+    // The listeners are bound on dragstart and unbound on dragend, never left
+    // on the document: GLPI's own file-upload dropzones are drag targets too,
+    // and a canvas that has been scrolled past should not be preventDefault-ing
+    // somebody else's drop.
 
+    /** Distance from the window edge at which the canvas starts scrolling. */
+    var DRAG_EDGE = 84;
+
+    /**
+     * Scroll rate at the very edge, in px per second; tapers to 0 at DRAG_EDGE.
+     *
+     * Per second rather than per frame, and scaled by the real frame interval,
+     * so a browser that is only managing 30fps — which under a busy page is
+     * most of them at some point — crosses the procedure at the same speed as
+     * one managing 60. A per-frame step makes the gesture as fast as the
+     * machine happens to be.
+     */
+    var DRAG_SPEED = 1400;
+
+    /** How long the pointer rests on a folded heading before it opens. */
+    var DRAG_DWELL = 450;
+
+    /** The block being dragged, or null when no drag of ours is in flight. */
     var dragged = null;
+
+    /** The rule showing where it would land. Lives in the canvas, never saved. */
+    var marker = null;
+
+    /** Last pointer position, in client coordinates. The scroll loop reads it. */
+    var pointerY = 0;
+
+    /** requestAnimationFrame handle for the edge-scroll loop. */
+    var scrolling = null;
+
+    /** Timestamp of the last scroll frame, and the sub-pixel it could not spend. */
+    var lastFrame = 0;
+    var carry     = 0;
+
+    /**
+     * Which edges are allowed to scroll, for this drag.
+     *
+     * An edge the drag *started* inside is disarmed until the pointer leaves
+     * it once. Without this, picking up a card that happens to render near the
+     * bottom of the window — which on a long procedure is most of them — sent
+     * the page running the instant the mouse went down, before the author had
+     * moved anywhere. The page should not move until it is asked to.
+     */
+    var edges = { top: true, bottom: true };
+
+    /** {section, timer} while the pointer rests on a folded heading. */
+    var dwell = null;
 
     function onDragStart(event) {
         var handle = event.target.closest('[data-sop-handle]');
@@ -1343,6 +1427,27 @@
         // Firefox starts no drag at all without a payload, and the payload is
         // never read: the element being dragged is held above.
         event.dataTransfer.setData('text/plain', key(dragged));
+
+        // Drag the card, not the grip. The drag image defaults to a snapshot of
+        // the draggable element, which here is an 18px icon — so the thing
+        // under the pointer looked nothing like the thing being moved.
+        if (event.dataTransfer.setDragImage) {
+            var box = dragged.getBoundingClientRect();
+            event.dataTransfer.setDragImage(
+                dragged,
+                event.clientX - box.left,
+                event.clientY - box.top
+            );
+        }
+
+        pointerY     = event.clientY;
+        edges.top    = pointerY > DRAG_EDGE;
+        edges.bottom = pointerY < window.innerHeight - DRAG_EDGE;
+
+        document.addEventListener('dragover', onDragOver);
+        document.addEventListener('drop', onDrop);
+        startScrolling();
+        place();
     }
 
     function onDragOver(event) {
@@ -1350,29 +1455,14 @@
             return;
         }
 
-        var over = dragged.hasAttribute('data-sop-step')
-            ? dropTargetForStep(event)
-            : event.target.closest('[data-sop-blocks] > [data-sop-section]');
-
-        if (!over) {
-            return;
-        }
-
+        // Unconditionally: the drop has to stay allowed while the pointer is
+        // over the page margin, the sticky bar or another plugin's panel, or
+        // the gesture dies the moment it leaves a card.
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
-    }
 
-    /**
-     * Where a dragged step would land.
-     *
-     * Either beside another step or inside an empty heading, and the second case
-     * is the one worth spelling out: a heading with nothing under it has no card
-     * to aim at, and without this a new section could only ever be filled by
-     * creating steps in it.
-     */
-    function dropTargetForStep(event) {
-        return event.target.closest('[data-sop-step]')
-            || event.target.closest('[data-sop-steps]');
+        pointerY = event.clientY;
+        place();
     }
 
     function onDrop(event) {
@@ -1381,52 +1471,251 @@
         }
 
         event.preventDefault();
+        // Ours, and nobody else's: the page underneath may well have a file
+        // dropzone on it.
+        event.stopPropagation();
 
-        if (dragged.hasAttribute('data-sop-step')) {
-            dropStep(event);
-        } else {
-            dropSection(event);
+        if (marker && marker.parentNode) {
+            marker.parentNode.insertBefore(dragged, marker);
         }
 
+        endDrag();
         refresh();
         markDirty();
     }
 
-    function dropStep(event) {
-        var onto = event.target.closest('[data-sop-step]');
-
-        if (onto && onto !== dragged) {
-            var after = onto.getBoundingClientRect().top + (onto.offsetHeight / 2) < event.clientY;
-            onto.parentElement.insertBefore(dragged, after ? onto.nextElementSibling : onto);
-            return;
-        }
-
-        var container = event.target.closest('[data-sop-steps]');
-        if (container && !onto) {
-            container.appendChild(dragged);
-        }
-    }
-
-    function dropSection(event) {
-        var onto = event.target.closest('[data-sop-blocks] > [data-sop-section]');
-
-        // Never past the unfiled block: it is the tail of the procedure by
-        // definition, and a heading dropped after it would read as running
-        // later than steps that run last.
-        if (!onto || onto === dragged || onto.hasAttribute('data-sop-unfiled')) {
-            return;
-        }
-
-        var after = onto.getBoundingClientRect().top + (onto.offsetHeight / 2) < event.clientY;
-        onto.parentElement.insertBefore(dragged, after ? onto.nextElementSibling : onto);
-    }
-
     function onDragEnd() {
+        endDrag();
+    }
+
+    function endDrag() {
         if (dragged) {
             dragged.classList.remove('sop-dragging');
         }
+        if (marker && marker.parentNode) {
+            marker.parentNode.removeChild(marker);
+        }
+
         dragged = null;
+        marker  = null;
+
+        stopScrolling();
+        clearDwell();
+        document.removeEventListener('dragover', onDragOver);
+        document.removeEventListener('drop', onDrop);
     }
+
+    // ------------------------------------------------------- where it lands
+
+    /** The marker element, created once per drag. */
+    function dropMarker(kind) {
+        if (!marker) {
+            marker = document.createElement('div');
+            marker.setAttribute('data-sop-marker', '');
+        }
+        marker.className = 'sop-drop-marker sop-drop-marker--' + kind;
+        return marker;
+    }
+
+    /** Put the marker where the block would land right now. */
+    function place() {
+        if (!dragged) {
+            return;
+        }
+
+        // Out of the layout before anything is measured — see the note above.
+        if (marker && marker.parentNode) {
+            marker.parentNode.removeChild(marker);
+        }
+
+        if (dragged.hasAttribute('data-sop-step')) {
+            placeStep();
+        } else {
+            placeSection();
+        }
+    }
+
+    /**
+     * A step lands in a heading's list, between the two cards it is between.
+     *
+     * The heading is chosen by where the pointer is rather than by what is
+     * under it, so the gap between two cards, a heading's own row and the
+     * "Add a step" rule at the foot of a block all resolve to a real slot
+     * instead of to nothing.
+     */
+    function placeStep() {
+        var section = sectionAt(pointerY);
+        if (!section) {
+            return;
+        }
+
+        // A folded heading has no list to drop into. Rather than refuse it —
+        // folding the sections you are not editing is how a long procedure is
+        // navigated, so it is also how you reach a distant one — resting on it
+        // opens it, and the next frame places the marker inside.
+        // The marker is already out of the layout at this point, so leaving
+        // without re-inserting it is the right answer: there is nowhere
+        // honest to point until the heading opens.
+        if (section.classList.contains('sop-section--collapsed')) {
+            armDwell(section);
+            return;
+        }
+        clearDwell();
+
+        var container = section.querySelector('[data-sop-steps]');
+        if (!container) {
+            return;
+        }
+
+        var before = null;
+        stepsIn(container).some(function (card) {
+            if (card === dragged) {
+                return false;
+            }
+            var box = card.getBoundingClientRect();
+            if (pointerY < box.top + (box.height / 2)) {
+                before = card;
+                return true;
+            }
+            return false;
+        });
+
+        container.insertBefore(dropMarker('step'), before);
+    }
+
+    /**
+     * A heading lands between two headings, and never past the unfiled block:
+     * that one is the tail of the procedure by definition, and a heading after
+     * it would read as running later than the steps that run last.
+     */
+    function placeSection() {
+        var unfiled = one('[data-sop-section][data-sop-unfiled]');
+        var before  = null;
+
+        sections().some(function (section) {
+            if (section === dragged || section === unfiled) {
+                return false;
+            }
+            var box = section.getBoundingClientRect();
+            if (pointerY < box.top + (box.height / 2)) {
+                before = section;
+                return true;
+            }
+            return false;
+        });
+
+        blocks().insertBefore(dropMarker('section'), before || unfiled);
+    }
+
+    /** The last heading that starts at or above `y`; the first one above them all. */
+    function sectionAt(y) {
+        var all   = sections();
+        var found = all[0] || null;
+
+        all.forEach(function (section) {
+            if (section.getBoundingClientRect().top <= y) {
+                found = section;
+            }
+        });
+
+        return found;
+    }
+
+    // ------------------------------------------------------ folded headings
+
+    function armDwell(section) {
+        if (dwell && dwell.section === section) {
+            return;
+        }
+
+        clearDwell();
+        dwell = {
+            section: section,
+            timer: window.setTimeout(function () {
+                dwell = null;
+                var trigger = section.querySelector('[data-sop-action="collapse-section"]');
+                if (trigger && section.classList.contains('sop-section--collapsed')) {
+                    collapseSection(section, trigger);
+                    place();
+                }
+            }, DRAG_DWELL),
+        };
+    }
+
+    function clearDwell() {
+        if (dwell) {
+            window.clearTimeout(dwell.timer);
+            dwell = null;
+        }
+    }
+
+    // ---------------------------------------------------------- edge scroll
+
+    function startScrolling() {
+        lastFrame = 0;
+        carry     = 0;
+        if (scrolling === null) {
+            scrolling = window.requestAnimationFrame(scrollFrame);
+        }
+    }
+
+    function stopScrolling() {
+        if (scrolling !== null) {
+            window.cancelAnimationFrame(scrolling);
+            scrolling = null;
+        }
+    }
+
+    function scrollFrame(now) {
+        scrolling = null;
+        if (!dragged) {
+            return;
+        }
+
+        // Capped, so a frame dropped while the browser was busy elsewhere is a
+        // pause rather than a jump across the procedure.
+        var delta = lastFrame ? Math.min(now - lastFrame, 64) : 16;
+        lastFrame = now;
+
+        var above = DRAG_EDGE - pointerY;
+        var below = pointerY - (window.innerHeight - DRAG_EDGE);
+        var depth = 0;
+
+        // Leaving an edge arms it; see `edges`.
+        edges.top    = edges.top || above <= 0;
+        edges.bottom = edges.bottom || below <= 0;
+
+        if (above > 0 && edges.top) {
+            depth = -Math.min(above, DRAG_EDGE) / DRAG_EDGE;
+        } else if (below > 0 && edges.bottom) {
+            depth = Math.min(below, DRAG_EDGE) / DRAG_EDGE;
+        }
+
+        if (depth === 0) {
+            carry = 0;
+        } else {
+            // The remainder is carried rather than dropped: at the shallow end
+            // of the taper a frame's worth is a fraction of a pixel, and
+            // rounding each one away on its own stalls the scroll completely.
+            var want = (DRAG_SPEED * depth * delta / 1000) + carry;
+            var by   = want > 0 ? Math.floor(want) : Math.ceil(want);
+            carry    = want - by;
+
+            if (by !== 0) {
+                var before = window.scrollY;
+                window.scrollBy(0, by);
+                // The page moved under a pointer that did not: everything
+                // measured in client coordinates has shifted with it, so the
+                // marker is stale.
+                if (window.scrollY !== before) {
+                    place();
+                }
+            }
+        }
+
+        scrolling = window.requestAnimationFrame(scrollFrame);
+    }
+
 
     // ------------------------------------------------------------- the save
 
