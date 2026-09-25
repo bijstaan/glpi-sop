@@ -27,10 +27,10 @@ use CommonITILObject;
  */
 class Trigger extends CommonDBChild
 {
-    public static $rightname = 'plugin_glpisop_sop';
+    public static string $rightname = 'plugin_glpisop_sop';
 
-    public static $itemtype = Sop::class;
-    public static $items_id = 'plugin_glpisop_sops_id';
+    public static string $itemtype = Sop::class;
+    public static string $items_id = 'plugin_glpisop_sops_id';
 
     public const IS           = 'is';
     public const IS_NOT       = 'is_not';

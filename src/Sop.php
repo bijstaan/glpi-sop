@@ -25,9 +25,9 @@ use Session;
  */
 class Sop extends CommonDBTM
 {
-    public static $rightname = 'plugin_glpisop_sop';
+    public static string $rightname = 'plugin_glpisop_sop';
 
-    public $dohistory = true;
+    public bool $dohistory = true;
 
     public static function getTypeName($nb = 0)
     {
@@ -99,7 +99,7 @@ class Sop extends CommonDBTM
 
         $DB->update(
             self::getTable(),
-            ['sop_version' => new \QueryExpression('`sop_version` + 1'), 'date_mod' => date('Y-m-d H:i:s')],
+            ['sop_version' => new \Glpi\DBAL\QueryExpression('`sop_version` + 1'), 'date_mod' => date('Y-m-d H:i:s')],
             ['id' => $sops_id]
         );
     }

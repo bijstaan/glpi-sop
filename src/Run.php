@@ -45,7 +45,7 @@ class Run extends CommonDBTM
      */
     public const ORIGIN_AI       = 'ai';
 
-    public static $rightname = 'plugin_glpisop_run';
+    public static string $rightname = 'plugin_glpisop_run';
 
     public static function getTypeName($nb = 0)
     {

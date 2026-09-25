@@ -21,7 +21,7 @@ use CommonDBTM;
  */
 class TemplateBinding extends CommonDBTM
 {
-    public static $rightname = 'plugin_glpisop_sop';
+    public static string $rightname = 'plugin_glpisop_sop';
 
     public static function getTypeName($nb = 0)
     {

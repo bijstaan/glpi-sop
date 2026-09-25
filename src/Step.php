@@ -30,10 +30,10 @@ use CommonDBChild;
  */
 class Step extends CommonDBChild
 {
-    public static $rightname = 'plugin_glpisop_sop';
+    public static string $rightname = 'plugin_glpisop_sop';
 
-    public static $itemtype = Sop::class;
-    public static $items_id = 'plugin_glpisop_sops_id';
+    public static string $itemtype = Sop::class;
+    public static string $items_id = 'plugin_glpisop_sops_id';
 
     // Branch operators. `checked` is "answered at all", which for a checkbox
     // step is the same statement and for every other type is the useful one.

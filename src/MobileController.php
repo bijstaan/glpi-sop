@@ -40,7 +40,7 @@ use Ticket;
 #[Route(path: '/GlpiSop', tags: ['GlpiSop'])]
 final class MobileController extends AbstractController
 {
-    protected static function getRawKnownSchemas(): array
+    protected static function getRawKnownSchemas(string $api_version = ''): array
     {
         return [];
     }

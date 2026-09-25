@@ -31,7 +31,9 @@ if (isset($_POST['add'])) {
 
     $sop = new Sop();
     if ($sops_id <= 0 || !$sop->getFromDB($sops_id)) {
-        Html::displayErrorAndDie(__('Unknown SOP.', 'glpisop'));
+        $error = new \Glpi\Exception\Http\BadRequestHttpException();
+        $error->setMessageToDisplay(__('Unknown SOP.', 'glpisop'));
+        throw $error;
     }
     $sop->check($sops_id, UPDATE);
 
@@ -89,7 +91,9 @@ if (isset($_POST['add'])) {
 if (isset($_POST['purge'])) {
     $triggers_id = (int) ($_POST['id'] ?? 0);
     if ($triggers_id <= 0 || !$trigger->getFromDB($triggers_id)) {
-        Html::displayErrorAndDie(__('Unknown trigger.', 'glpisop'));
+        $error = new \Glpi\Exception\Http\BadRequestHttpException();
+        $error->setMessageToDisplay(__('Unknown trigger.', 'glpisop'));
+        throw $error;
     }
 
     $sops_id = (int) $trigger->fields['plugin_glpisop_sops_id'];

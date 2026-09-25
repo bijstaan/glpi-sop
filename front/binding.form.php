@@ -20,7 +20,9 @@ $itemtype = (string) ($_POST['itemtype'] ?? '');
 $items_id = (int) ($_POST['items_id'] ?? 0);
 
 if (!in_array($itemtype, ['TicketTemplate', 'ChangeTemplate', 'ProblemTemplate'], true)) {
-    Html::displayErrorAndDie(__('Unknown template type.', 'glpisop'));
+    $error = new \Glpi\Exception\Http\BadRequestHttpException();
+    $error->setMessageToDisplay(__('Unknown template type.', 'glpisop'));
+    throw $error;
 }
 
 // The template is checked for update rights, not merely for existence: binding
@@ -28,13 +30,17 @@ if (!in_array($itemtype, ['TicketTemplate', 'ChangeTemplate', 'ProblemTemplate']
 // is an edit of the template in everything but the column it touches.
 $template = new $itemtype();
 if ($items_id <= 0 || !$template->getFromDB($items_id)) {
-    Html::displayErrorAndDie(__('Unknown template.', 'glpisop'));
+    $error = new \Glpi\Exception\Http\BadRequestHttpException();
+    $error->setMessageToDisplay(__('Unknown template.', 'glpisop'));
+    throw $error;
 }
 $template->check($items_id, UPDATE);
 
 $sop = new Sop();
 if ($sops_id <= 0 || !$sop->getFromDB($sops_id)) {
-    Html::displayErrorAndDie(__('Unknown SOP.', 'glpisop'));
+    $error = new \Glpi\Exception\Http\BadRequestHttpException();
+    $error->setMessageToDisplay(__('Unknown SOP.', 'glpisop'));
+    throw $error;
 }
 $sop->check($sops_id, READ);
 

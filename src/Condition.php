@@ -50,10 +50,10 @@ use CommonITILObject;
  */
 class Condition extends CommonDBChild
 {
-    public static $rightname = 'plugin_glpisop_sop';
+    public static string $rightname = 'plugin_glpisop_sop';
 
-    public static $itemtype = Step::class;
-    public static $items_id = 'plugin_glpisop_steps_id';
+    public static string $itemtype = Step::class;
+    public static string $items_id = 'plugin_glpisop_steps_id';
 
     public const SRC_STEP     = 'step';
     public const SRC_FIELD    = 'field';

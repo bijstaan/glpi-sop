@@ -23,7 +23,7 @@ class Answer extends CommonDBTM
     public const DONE    = 'done';
     public const SKIPPED = 'skipped';
 
-    public static $rightname = 'plugin_glpisop_run';
+    public static string $rightname = 'plugin_glpisop_run';
 
     public static function getTypeName($nb = 0)
     {

@@ -42,7 +42,7 @@ use GlpiPlugin\Glpisop\TemplateTab;
 // file, including the one that makes `hidden` win over Tabler's `display`, and
 // without them every step card renders permanently open.
 define('PLUGIN_GLPISOP_VERSION', '0.3.0');
-define('PLUGIN_GLPISOP_MIN_GLPI', '11.0');
+define('PLUGIN_GLPISOP_MIN_GLPI', '12.0');
 
 // Settings live under this config context.
 define('PLUGIN_GLPISOP_CONFIG_CONTEXT', 'plugin:glpisop');

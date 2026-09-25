@@ -20,7 +20,7 @@ use Session;
  */
 class TemplateTab extends CommonGLPI
 {
-    public static $rightname = 'plugin_glpisop_sop';
+    public static string $rightname = 'plugin_glpisop_sop';
 
     public static function getTypeName($nb = 0)
     {
