@@ -393,7 +393,16 @@ class Sop extends CommonDBTM
         // the author's choice is what reaches add() — and, because
         // sop.form.php checks CREATE against the submitted input, what the
         // rights check authorises too.
-        if ($this->isNewItem() && Session::isMultiEntitiesMode()) {
+        //
+        // GLPI Scope asks the same question on every new item's form, SOPs
+        // included, and infers the answer where it can. When it is active it
+        // owns the question: two pickers named `entities_id` would leave the
+        // later one — this one — silently deciding.
+        if (
+            $this->isNewItem()
+            && Session::isMultiEntitiesMode()
+            && !\Plugin::isPluginActive('glpiscope')
+        ) {
             echo "<tr class='tab_bg_1'>";
             echo '<td>' . __s('Entity') . '</td>';
             echo "<td colspan='3'>";
